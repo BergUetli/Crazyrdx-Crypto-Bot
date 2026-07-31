@@ -50,9 +50,15 @@ python3 sim/run_broad_evolution.py
 **3. View the Dashboard:**
 Open a new terminal tab and start the dashboard to monitor progress.
 ```bash
+# To view it on this Mac:
 python3 sim/dashboard.py 
 # Then visit http://127.0.0.1:8765 in your browser
+
+# To view it from another computer on the same WiFi (e.g. Windows PC):
+python3 sim/dashboard.py --lan
+# Then visit http://<your-macs-ip>:8765 
 ```
+*Note: To find your Mac's IP address, run `ipconfig getifaddr en0` in the terminal.*
 
 ## 🛡️ The Promotion Gauntlet
 If the GA finds a strategy that scores well, it enters the `PromotionFunnel`. A strategy only hits the `Shortlist` if it passes:

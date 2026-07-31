@@ -1057,12 +1057,17 @@ def main():
     p = argparse.ArgumentParser(description="Trading bot dashboard")
     p.add_argument("--port", type=int, default=PORT)
     p.add_argument("--no-open", action="store_true")
+    p.add_argument("--lan", action="store_true", help="Bind to 0.0.0.0 instead of 127.0.0.1 to allow local network access")
     args = p.parse_args()
 
-    httpd = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    url = f"http://127.0.0.1:{args.port}"
+    host = "0.0.0.0" if args.lan else "127.0.0.1"
+    httpd = ThreadingHTTPServer((host, args.port), Handler)
+    url = f"http://{'127.0.0.1' if not args.lan else 'localhost'}:{args.port}"
     print(f"Dashboard: {url}")
-    if not args.no_open:
+    if args.lan:
+        print(f"LAN Access enabled. Look up your local IP (e.g., 192.168.x.x) and use http://<your-ip>:{args.port} from other devices on your WiFi.")
+        
+    if not args.no_open and not args.lan:
         webbrowser.open(url)
     try:
         httpd.serve_forever()
