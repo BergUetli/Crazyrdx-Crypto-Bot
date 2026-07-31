@@ -39,6 +39,30 @@ RESULTS.mkdir(parents=True, exist_ok=True)
 STOP = SIM / "STOP_EVOLUTION"
 
 
+def load_seed_genomes(max_seeds: int = 5):
+    """Warm-start seeds: past champions + last cycle's best genome."""
+    from evolution.genome import StrategyGenome
+
+    seeds = []
+    champs_path = SIM / "evolution" / "champions.json"
+    if champs_path.exists():
+        try:
+            champs = json.loads(champs_path.read_text()).get("champions", [])
+            for c in champs[:max_seeds]:
+                g = c.get("genome")
+                if g:
+                    seeds.append(StrategyGenome.from_dict(g))
+        except Exception:
+            pass
+    best_path = SIM / "evolution" / "best_genome_latest.json"
+    if best_path.exists():
+        try:
+            seeds.append(StrategyGenome.from_dict(json.loads(best_path.read_text())))
+        except Exception:
+            pass
+    return seeds
+
+
 def main():
     features = get_historical_features_1h("SOL/USDC", limit=4000)
     print(f"Loaded {len(features)} 1h features, fields={len(features[0]['features'])}")
@@ -73,6 +97,9 @@ def main():
         print(f"\n=== Cycle {cycle} ===")
         print(f"  Kill archive size: {arch.size}")
 
+        seeds = load_seed_genomes()
+        if seeds:
+            print(f"  Warm-start seeds available: {len(seeds)}")
         engine = EvolutionEngine(
             features,
             population_size=150,
@@ -81,6 +108,7 @@ def main():
             crossover_rate=0.65,
             immigrant_rate=0.20,
             use_kill_archive=True,
+            seed_genomes=seeds,
         )
         best = engine.evolve_continuous(
             max_duration_s=2400,

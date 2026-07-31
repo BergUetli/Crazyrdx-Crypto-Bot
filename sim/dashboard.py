@@ -248,6 +248,244 @@ def plain_english_trend(direction: str, prev: dict, recent: dict, prev_med, rec_
     }
 
 
+# ---------------------------------------------------------------------------
+# Learning curve: how far ideas get through the strict exam over time.
+# The funnel gates are ordered; "depth" = how many gates the best candidate
+# of a search cleared before dying (8 = passed everything = shortlist).
+# ---------------------------------------------------------------------------
+
+GATE_ORDER = [
+    "kill_archive", "feasibility", "oos", "walk_forward",
+    "fee_stress", "perturbation", "mev", "dsr",
+]
+GATE_FRIENDLY = {
+    "kill_archive": "blocked at the door (known-bad family)",
+    "feasibility": "basic check (enough trades, profit, drawdown)",
+    "oos": "unseen later data",
+    "walk_forward": "chapter-by-chapter consistency",
+    "fee_stress": "higher fees",
+    "perturbation": "small rule nudges",
+    "mev": "front-running stress",
+    "dsr": "statistical luck filter",
+}
+
+
+def funnel_depth(r: dict):
+    """Deepest exam gate cleared by any candidate of one finished search.
+
+    Returns 0..8 (8 = full pass) or None if the search ran no funnel.
+    """
+    rows = r.get("funnel")
+    if not rows:
+        return None
+    best = 0
+    for row in rows:
+        if row.get("all_passed"):
+            best = max(best, len(GATE_ORDER))
+            continue
+        failed = str(row.get("failed_at") or "")
+        if failed in GATE_ORDER:
+            best = max(best, GATE_ORDER.index(failed))
+    return best
+
+
+def learning_stats(runs: list[dict]) -> dict:
+    """Windowed 'is it getting smarter?' verdict from funnel gate depth."""
+    rows = []
+    for r in runs:
+        d = funnel_depth(r)
+        if d is None:
+            continue
+        fails = [
+            str(x.get("failed_at"))
+            for x in (r.get("funnel") or [])
+            if x.get("failed_at")
+        ]
+        rows.append({
+            "depth": d,
+            "promoted": int(r.get("n_promoted") or 0),
+            "kill_n": int(r.get("kill_archive_n") or 0),
+            "fails": fails,
+            "ts": r.get("timestamp") or r.get("_mtime") or 0,
+        })
+    if len(rows) < 4:
+        return {"ok": False, "n": len(rows), "depths": [r["depth"] for r in rows]}
+
+    half = len(rows) // 2
+    prev, rec = rows[:half], rows[half:]
+
+    def med(vals):
+        return statistics.median(vals) if vals else 0.0
+
+    prev_med = med([r["depth"] for r in prev])
+    rec_med = med([r["depth"] for r in rec])
+    rec_max = max(r["depth"] for r in rec)
+    promoted_prev = sum(r["promoted"] for r in prev)
+    promoted_rec = sum(r["promoted"] for r in rec)
+    kill_growth = rows[-1]["kill_n"] - rows[0]["kill_n"]
+
+    # Which gate is the current wall (most common recent failure)?
+    recent_fails = [f for r in rec for f in r["fails"] if f in GATE_ORDER]
+    wall = max(set(recent_fails), key=recent_fails.count) if recent_fails else None
+
+    if promoted_rec > promoted_prev and promoted_rec > 0:
+        direction, head = "SMARTER", (
+            "Yes — ideas are now passing the whole exam more often than before."
+        )
+    elif promoted_rec > 0:
+        direction, head = "SMARTER", (
+            "Yes — some ideas pass the whole exam (shortlist hits in this window)."
+        )
+    elif rec_med >= prev_med + 0.5:
+        direction, head = "SMARTER", (
+            f"Slowly — ideas now typically clear {rec_med:.1f} of 8 exam gates, "
+            f"up from {prev_med:.1f}. Closer to a shortlist pass."
+        )
+    elif rec_med <= prev_med - 0.5:
+        direction, head = "WEAKER", (
+            f"No — ideas are dying earlier in the exam "
+            f"({prev_med:.1f} → {rec_med:.1f} of 8 gates)."
+        )
+    else:
+        direction, head = "FLAT", (
+            f"Not yet — exam progress is flat (typically {rec_med:.1f} of 8 gates, "
+            f"best recent run reached {rec_max})."
+        )
+
+    detail_parts = []
+    if wall:
+        detail_parts.append(
+            f"The wall right now is <b>{GATE_FRIENDLY.get(wall, wall)}</b> — "
+            f"that is where most recent ideas die."
+        )
+    if kill_growth > 0:
+        detail_parts.append(
+            f"Memory is growing: <b>{kill_growth:,}</b> new bad idea-families were "
+            f"blocked in this window, so the search wastes less time on known dead ends."
+        )
+    return {
+        "ok": True,
+        "n": len(rows),
+        "depths": [r["depth"] for r in rows],
+        "direction": direction,
+        "head": head,
+        "detail": " ".join(detail_parts),
+        "prev_med": prev_med,
+        "rec_med": rec_med,
+        "rec_max": rec_max,
+        "promoted_prev": promoted_prev,
+        "promoted_rec": promoted_rec,
+        "kill_growth": kill_growth,
+        "wall": wall,
+    }
+
+
+def gate_depth_chart(depths: list[int], w: int = 720, h: int = 220) -> str:
+    """Bar chart: exam gates cleared per finished search (8 = full pass)."""
+    if not depths:
+        return "<div class='muted'>No funnel data yet.</div>"
+    depths = depths[-60:]
+    ml, mr, mt, mb = 34, 10, 14, 30
+    pw, ph = w - ml - mr, h - mt - mb
+    n = len(depths)
+    bw = max(4.0, pw / n - 3.0)
+    top = float(len(GATE_ORDER))
+
+    bars = []
+    for i, d in enumerate(depths):
+        x = ml + (pw / n) * i + 1.5
+        bh = (d / top) * ph
+        y = mt + ph - bh
+        if d >= 8:
+            color = "#3ddc97"
+        elif d >= 4:
+            color = "#58a6ff"
+        elif d >= 2:
+            color = "#f5a623"
+        else:
+            color = "#e85d5d"
+        bars.append(
+            f"<rect x='{x:.1f}' y='{y:.1f}' width='{bw:.1f}' "
+            f"height='{max(bh, 2):.1f}' rx='1.5' fill='{color}'/>"
+        )
+
+    gridlines = []
+    for lvl in (0, 2, 4, 6, 8):
+        y = mt + ph - (lvl / top) * ph
+        gridlines.append(
+            f"<line x1='{ml}' y1='{y:.1f}' x2='{w - mr}' y2='{y:.1f}' "
+            f"stroke='#243041' stroke-width='1'/>"
+            f"<text x='{ml - 6}' y='{y + 4:.1f}' fill='#8b9bb4' font-size='11' "
+            f"text-anchor='end'>{lvl}</text>"
+        )
+    pass_y = mt + ph - ph
+    return f"""
+<svg viewBox="0 0 {w} {h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#0f1419;border-radius:8px">
+  {''.join(gridlines)}
+  <line x1="{ml}" y1="{pass_y}" x2="{w - mr}" y2="{pass_y}" stroke="#3ddc97" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="{w - mr}" y="{pass_y + 14}" fill="#3ddc97" font-size="11" text-anchor="end">8 = passed the whole exam</text>
+  {''.join(bars)}
+  <text x="{ml}" y="{h - 8}" fill="#8b9bb4" font-size="11">older</text>
+  <text x="{w - mr}" y="{h - 8}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>
+</svg>"""
+
+
+def learning_html(s: dict) -> str:
+    ls = s.get("learning") or {}
+    if not ls.get("ok"):
+        return f"""
+  <div class="card">
+    <h2>4. Is the bot getting smarter? <span class="section-hint">exam progress over time</span></h2>
+    <p class="lead">Too early to tell — only {ls.get('n', 0)} finished searches ran the strict exam so far.</p>
+    <p class="muted">This section fills in once enough search jobs have been through the funnel.</p>
+  </div>"""
+
+    badge = {"SMARTER": "ok", "WEAKER": "bad", "FLAT": "warn"}.get(ls.get("direction"), "warn")
+    chart = gate_depth_chart(ls.get("depths") or [])
+    detail = ls.get("detail") or ""
+    return f"""
+  <div class="card">
+    <div class="row between">
+      <h2>4. Is the bot getting smarter? <span class="section-hint">exam progress over time</span></h2>
+      <span class="badge {badge}">{ls.get('direction')}</span>
+    </div>
+    <p class="lead">{ls.get('head')}</p>
+    {f'<p>{detail}</p>' if detail else ''}
+    <div class="grid4" style="margin-top:12px">
+      <div class="stat">
+        <div class="k">Exam gates cleared (typical)</div>
+        <div class="v">{ls.get('rec_med', 0):.1f} / 8</div>
+        <div class="hint">earlier block: {ls.get('prev_med', 0):.1f} / 8</div>
+      </div>
+      <div class="stat">
+        <div class="k">Best recent run</div>
+        <div class="v">{ls.get('rec_max', 0)} / 8</div>
+        <div class="hint">deepest any idea got lately</div>
+      </div>
+      <div class="stat">
+        <div class="k">Full passes (recent vs earlier)</div>
+        <div class="v">{ls.get('promoted_rec', 0)} vs {ls.get('promoted_prev', 0)}</div>
+        <div class="hint">shortlist hits per window</div>
+      </div>
+      <div class="stat">
+        <div class="k">New dead ends memorised</div>
+        <div class="v">{ls.get('kill_growth', 0):,}</div>
+        <div class="hint">bad families blocked in this window</div>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <div class="note" style="margin-bottom:8px">
+        <b>Chart C — exam progress:</b> each bar is one finished search; height = how many of
+        the 8 exam gates its best idea cleared before dying.
+        The exam order is: known-bad check → basic feasibility → unseen later data →
+        chapter consistency → fee stress → rule nudges → front-running stress → luck filter.
+        <b>Rising bars = real learning</b>, even while the shortlist is still empty.
+      </div>
+      {chart}
+    </div>
+  </div>"""
+
+
 def _y_of(v: float, mn: float, mx: float, mt: float, ph: float) -> float:
     return mt + ph - (v - mn) / (mx - mn) * ph
 
@@ -476,6 +714,7 @@ def collect_status() -> dict:
     trend = compute_honest_trend(recent, prev if prev else recent[:1])
     recent_sum = summarize_window(recent)
     all_sum = summarize_window(runs[-100:] if runs else [])
+    learning = learning_stats([r for r in broad if is_funnel_era(r)][-80:])
 
     # Questionable metrics to surface
     questions = []
@@ -517,6 +756,7 @@ def collect_status() -> dict:
         "recent_sum": recent_sum,
         "all_sum": all_sum,
         "trend": trend,
+        "learning": learning,
         "trials_total": int(trials.get("total_trials") or 0),
         "champions": champions,
         "last_promoted": last_promoted,
@@ -777,13 +1017,24 @@ def last_cycle_html(s: dict) -> str:
   </div>"""
 
 
+def fmt_exam_score(v) -> str:
+    """Old runs stored exploding Sharpe-era scores (1e17). Flag, don't print."""
+    try:
+        x = float(v or 0)
+    except (TypeError, ValueError):
+        return "?"
+    if abs(x) > 1e6:
+        return "legacy (broken old score)"
+    return f"{x:.0f}"
+
+
 def champions_html(s: dict) -> str:
     champs = (s.get("champions") or {}).get("champions") or []
     last_p = s.get("last_promoted")
     if not champs and not (last_p and last_p.get("all_passed")):
         return """
   <div class="card">
-    <h2>4. Shortlist (ideas that passed the strict exam)</h2>
+    <h2>5. Shortlist (ideas that passed the strict exam)</h2>
     <p class="lead">Empty for now.</p>
     <p class="muted">
       An idea only reaches this list after enough paper trades, a clean check on later data,
@@ -800,7 +1051,7 @@ def champions_html(s: dict) -> str:
         seen.add(gid)
         rows.append(
             f"<tr><td>Latest pass</td><td><b>{g.get('entry_logic','?')}</b></td>"
-            f"<td>{float(last_p.get('score') or 0):.0f}</td>"
+            f"<td>{fmt_exam_score(last_p.get('score'))}</td>"
             f"<td class='muted'><code>{gid[:36]}</code></td></tr>"
         )
     for c in champs[:6]:
@@ -810,13 +1061,13 @@ def champions_html(s: dict) -> str:
             continue
         rows.append(
             f"<tr><td>On shortlist</td><td><b>{g.get('entry_logic','?')}</b></td>"
-            f"<td>{float(c.get('score') or 0):.0f}</td>"
+            f"<td>{fmt_exam_score(c.get('score'))}</td>"
             f"<td class='muted'><code>{gid[:36]}</code></td></tr>"
         )
 
     return f"""
   <div class="card">
-    <h2>4. Shortlist <span class="section-hint">still paper only — not live trading</span></h2>
+    <h2>5. Shortlist <span class="section-hint">still paper only — not live trading</span></h2>
     <p class="lead">
       These ideas survived the strict exam. That is the first serious filter, not a green light for real money.
     </p>
@@ -971,6 +1222,8 @@ def html_page(s: dict) -> str:
       Prefer many green bars and a calm score line over huge lonely spikes.
     </div>
   </div>
+
+  {learning_html(s)}
 
   {champions_html(s)}
 

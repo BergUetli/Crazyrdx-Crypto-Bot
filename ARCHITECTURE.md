@@ -8,9 +8,9 @@ This document explains the internal machinery of the bot. The system is designed
 
 The core driver of the bot is the **Broad Explorer** (`sim/run_broad_evolution.py`). It runs in a continuous, infinite loop offline.
 
-1. **Initialization:** The system loads historical 1-hour candle data (e.g., SOL/USDC) and computes *features* (e.g., RSI, Volatility, SMA crosses, multi-timeframe trends).
-2. **Breeding (Genetic Algorithm):** It generates 150 random strategies ("Genomes"). 
-3. **Simulation:** The `BacktestEngine` runs every strategy against the historical data to see how it would have performed. 
+1. **Initialization:** The system loads the most recent historical 1-hour candle data (e.g., SOL/USDC) and computes *features* (e.g., RSI, Volatility, SMA crosses, multi-timeframe trends). Threshold sampling ranges are then **calibrated to the actual data distribution** (5th–95th percentile per indicator) so every generated rule can actually fire.
+2. **Breeding (Genetic Algorithm):** It generates 150 random strategies ("Genomes"), **warm-started** with up to 20% mutated variants of past champions so proven regions keep being refined. 
+3. **Simulation:** The `BacktestEngine` runs every strategy against the historical data to see how it would have performed. Evaluation is **parallelized across CPU cores** (persistent worker pool; `EVOLUTION_WORKERS` overrides the worker count) and an **evaluation cache** skips re-backtesting structurally identical clones. Exit fills are gap-aware (a bar opening beyond a stop fills at the open), and trailing stops trigger only off prior-bar peaks — no intrabar look-ahead. 
 4. **Scoring:** The `GenomeEvaluator` scores them based on a composite fitness function (Sharpe ratio, win rate, total profit, and a penalty for drawdowns/low trade counts).
 5. **Evolution:** The worst strategies are discarded. The best (the "elite") are kept. The rest are "bred" via crossover (swapping rules with another good strategy) and mutation (tweaking thresholds slightly). 
 6. **Immigration:** To prevent the system from getting stuck on local maximums, 20% of the population every cycle is replaced with brand-new, totally random strategies.
@@ -73,3 +73,4 @@ The system provides a local, human-readable UI at `http://127.0.0.1:8765` (`sim/
 * It tracks the median trade-count of winning strategies.
 * It plots the average fitness to show if the system is converging on better solutions or just randomly generating noise. 
 * It exposes the funnel results so you can see exactly *why* a particular top strategy was rejected at the gate. 
+* **Learning curve (Chart C):** for every finished search it plots how many of the 8 funnel gates the best candidate cleared (8 = promoted to the shortlist). A rising bar profile is the honest signal that the system is getting smarter, even while the shortlist is still empty — plus it names the "wall": the gate where most ideas currently die.
