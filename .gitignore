@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+sim/data/*.db
+sim/data/*.db-shm
+sim/data/*.db-wal
+sim/logs/
+sim/evolution/population/
+sim/evolution/funnel_results/
+sim/evolution/*.db
+sim/evolution/*.json
+!sim/evolution/champions.json
+!sim/evolution/killed_dna.json
+!sim/evolution/trial_count.json
