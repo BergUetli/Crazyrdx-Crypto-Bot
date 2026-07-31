@@ -525,10 +525,14 @@ def get_historical_features(
         query += " AND ts <= ?"
         params.append(end_ts)
 
-    query += " ORDER BY ts"
-
     if limit:
-        query += f" LIMIT {limit}"
+        # Most RECENT `limit` rows, in chronological order (see 1h engine).
+        query = (
+            f"SELECT * FROM ({query} ORDER BY ts DESC LIMIT {int(limit)}) "
+            "ORDER BY ts"
+        )
+    else:
+        query += " ORDER BY ts"
 
     cursor = conn.execute(query, params)
     rows = []

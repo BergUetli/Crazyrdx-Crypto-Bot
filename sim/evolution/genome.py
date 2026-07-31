@@ -49,7 +49,9 @@ INDICATORS = [
     "sol_eth_ratio", "sol_eth_ratio_roc_4h", "sol_eth_ratio_roc_1d", "sol_eth_corr_1d",
 ]
 
-# Threshold ranges per indicator type
+# Threshold ranges per indicator type.
+# NOTE: matched longest-key-first (see get_threshold_range). Empirical
+# calibration from live data (calibrate_threshold_ranges) overrides these.
 THRESHOLD_RANGES = {
     "price_roc": (5.0, 200.0),
     "volatility": (10.0, 500.0),
@@ -94,7 +96,67 @@ THRESHOLD_RANGES = {
     "sol_eth_ratio_roc": (-100.0, 100.0),
     "sol_eth_corr": (-1.0, 1.0),
     "cross_trifecta": (-1.0, 1.0),
+    # Previously unmatched indicators fell to a (0, 100) default that could
+    # never fire on their actual value ranges
+    "hour_of_day": (-1.0, 1.0),
+    "day_of_week": (0.0, 6.0),
+    "is_weekend": (0.0, 1.0),
+    "sma_cross": (-1.0, 1.0),
+    "autocorrelation": (-1.0, 1.0),
+    "close_lag": (0.0, 500.0),
+    "volume_lag": (0.0, 1e6),
+    "volume_weighted_price": (0.0, 500.0),
 }
+
+# Empirically calibrated ranges (exact indicator name -> (lo, hi)),
+# populated at runtime from the loaded feature data. Always wins over
+# the static THRESHOLD_RANGES heuristics above.
+CALIBRATED_RANGES: Dict[str, Tuple[float, float]] = {}
+
+
+def calibrate_threshold_ranges(
+    features: List[Dict[str, Any]],
+    low_pct: float = 5.0,
+    high_pct: float = 95.0,
+) -> int:
+    """Derive threshold ranges from the actual data distribution.
+
+    For every known indicator present in the feature rows, set its sampling
+    range to the [low_pct, high_pct] percentile span of observed values.
+    Guarantees thresholds land where conditions can actually flip between
+    true and false, instead of being always-true/always-false.
+
+    Returns the number of indicators calibrated.
+    """
+    if not features:
+        return 0
+    import numpy as _np
+
+    CALIBRATED_RANGES.clear()
+    cols: Dict[str, List[float]] = {ind: [] for ind in INDICATORS}
+    for row in features:
+        f = row.get("features") or {}
+        for ind in INDICATORS:
+            v = f.get(ind)
+            if v is not None:
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if fv == fv and fv not in (float("inf"), float("-inf")):
+                    cols[ind].append(fv)
+
+    n_cal = 0
+    for ind, vals in cols.items():
+        if len(vals) < 50:
+            continue
+        lo = float(_np.percentile(vals, low_pct))
+        hi = float(_np.percentile(vals, high_pct))
+        if hi - lo <= 1e-12:  # constant feature (e.g. tft heads still zero)
+            continue
+        CALIBRATED_RANGES[ind] = (lo, hi)
+        n_cal += 1
+    return n_cal
 
 # Categorical options
 # RANDOM kept only as optional offline baseline control, never used in selection.
@@ -105,11 +167,55 @@ EXIT_TYPES = ["profit_target", "stop_loss", "time_stop", "trailing_stop", "signa
 
 
 def get_threshold_range(indicator: str) -> Tuple[float, float]:
-    """Get valid threshold range for an indicator."""
-    for key, range_tuple in THRESHOLD_RANGES.items():
-        if key in indicator:
-            return range_tuple
+    """Get valid threshold range for an indicator.
+
+    Calibrated (data-driven) exact match wins; otherwise the LONGEST matching
+    key in THRESHOLD_RANGES. First-match lookup was a bug: e.g.
+    "volatility_regime_1h_4h" (values ~0-5) matched "volatility" and got
+    thresholds in 10-500, making the condition always/never true.
+    """
+    cal = CALIBRATED_RANGES.get(indicator)
+    if cal is not None:
+        return cal
+    best_key = None
+    for key in THRESHOLD_RANGES:
+        if key in indicator and (best_key is None or len(key) > len(best_key)):
+            best_key = key
+    if best_key is not None:
+        return THRESHOLD_RANGES[best_key]
     return (0.0, 100.0)
+
+
+def dna_signature(genome: "StrategyGenome") -> Tuple:
+    """Structural identity of a strategy (ignores ids/metadata).
+
+    Two genomes with the same signature produce identical backtests, so
+    evaluation results can be cached across clones and generations.
+    """
+    conds = tuple(
+        sorted(
+            (c.indicator, c.operator, round(float(c.threshold), 6))
+            for c in (genome.entry_conditions or [])
+        )
+    )
+    filts = tuple(
+        sorted(
+            (f.filter_type, json.dumps(f.params, sort_keys=True, default=str))
+            for f in (genome.filters or [])
+        )
+    )
+    exits = tuple(
+        sorted((e.exit_type, round(float(e.value), 6)) for e in (genome.exit_rules or []))
+    )
+    return (
+        genome.entry_logic,
+        conds,
+        filts,
+        genome.sizing_method,
+        round(float(genome.sizing_base), 6),
+        round(float(genome.sizing_max), 6),
+        exits,
+    )
 
 
 @dataclass
@@ -282,9 +388,15 @@ def mutate(genome: StrategyGenome, mutation_rate: float = 0.1) -> StrategyGenome
     # Mutate entry conditions
     for i, cond in enumerate(new_genome.entry_conditions):
         if random.random() < mutation_rate:
-            # Mutate threshold
+            # Threshold: mostly local Gaussian nudge (exploitation),
+            # occasionally full re-roll (exploration)
             min_val, max_val = get_threshold_range(cond.indicator)
-            cond.threshold = random.uniform(min_val, max_val)
+            if random.random() < 0.7:
+                span = max_val - min_val
+                nudged = cond.threshold + random.gauss(0.0, 0.1 * span)
+                cond.threshold = min(max_val, max(min_val, nudged))
+            else:
+                cond.threshold = random.uniform(min_val, max_val)
         if random.random() < mutation_rate:
             # Mutate operator
             cond.operator = random.choice([">", "<", ">=", "<="])
@@ -311,6 +423,10 @@ def mutate(genome: StrategyGenome, mutation_rate: float = 0.1) -> StrategyGenome
                 rule.value = random.uniform(0.001, 0.02)
             elif rule.exit_type == "time_stop":
                 rule.value = random.randint(1, 48)
+            elif rule.exit_type == "trailing_stop":
+                rule.value = random.uniform(0.004, 0.03)
+            elif rule.exit_type == "signal_reversal":
+                rule.value = random.uniform(0.5, 1.0)
     
     # Add/remove conditions
     if random.random() < mutation_rate * 0.5 and len(new_genome.entry_conditions) > 1:

@@ -569,26 +569,28 @@ class BacktestEngine:
             px = features[j]["features"]["close"]
             hi = features[j]["features"].get("high", px)
             lo = features[j]["features"].get("low", px)
+            op = features[j]["features"].get("open", px)
 
+            # Gap-aware fills: if the bar opens beyond the stop level, a real
+            # order fills at the open, not at the (already gapped past) stop.
             if direction == "long":
-                best_price = max(best_price, hi)
-                # stop loss
                 if sl is not None and lo <= exec_price * (1.0 - sl):
-                    return j, exec_price * (1.0 - sl)
-                # take profit
+                    return j, min(op, exec_price * (1.0 - sl))
                 if tp is not None and hi >= exec_price * (1.0 + tp):
-                    return j, exec_price * (1.0 + tp)
-                # trailing stop from peak
+                    return j, max(op, exec_price * (1.0 + tp))
+                # Trailing stop: trigger against the peak from PRIOR bars only
+                # (using this bar's high as the peak was intrabar look-ahead)
                 if trail is not None and lo <= best_price * (1.0 - trail):
-                    return j, best_price * (1.0 - trail)
+                    return j, min(op, best_price * (1.0 - trail))
+                best_price = max(best_price, hi)
             else:  # short
-                best_price = min(best_price, lo)
                 if sl is not None and hi >= exec_price * (1.0 + sl):
-                    return j, exec_price * (1.0 + sl)
+                    return j, max(op, exec_price * (1.0 + sl))
                 if tp is not None and lo <= exec_price * (1.0 - tp):
-                    return j, exec_price * (1.0 - tp)
+                    return j, min(op, exec_price * (1.0 - tp))
                 if trail is not None and hi >= best_price * (1.0 + trail):
-                    return j, best_price * (1.0 + trail)
+                    return j, max(op, best_price * (1.0 + trail))
+                best_price = min(best_price, lo)
 
             # opposite signal
             if use_reversal and j > start:

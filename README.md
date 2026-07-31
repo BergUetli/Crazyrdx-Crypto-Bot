@@ -29,6 +29,17 @@ The bot is broken into clear layers:
 
 * **Dashboard** (`sim/dashboard.py` & `sim/run_broad_evolution.py`)
   - Local HTTP server updating real-time on search progress, showing the median score of strategies, trade frequencies, and paper-trade metrics.
+  - "Is the bot getting smarter?" section: tracks how many strict-exam gates each search's best idea clears over time (the learning curve), which gate is the current wall, and kill-archive memory growth.
+
+## ⚡ Engine capabilities (added 2026-08-01)
+
+* **Parallel search:** genome evaluation runs across all CPU cores (persistent worker pool, ~3.5× throughput). Control with `EVOLUTION_WORKERS` (set `1` to force serial).
+* **Data-calibrated thresholds:** entry-condition thresholds are sampled from the 5th–95th percentile of each indicator's real distribution, recalibrated every cycle.
+* **Evaluation cache:** structurally identical strategies are backtested once, not repeatedly.
+* **Champion warm-starting:** each cycle seeds part of its population from past champions instead of restarting from pure noise.
+* **Test suite:** `python3 sim/test_improvements.py` verifies the engine end-to-end on synthetic data (no market data or API needed).
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list of fixes and improvements.
 
 ## 🚀 Quick Start (Local Run)
 

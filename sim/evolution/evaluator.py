@@ -11,6 +11,7 @@ Selection rules:
 from __future__ import annotations
 
 import json
+import os
 import random
 import time
 from pathlib import Path
@@ -71,15 +72,19 @@ class GenomeEvaluator:
         initial_capital: float = 100.0,
         fee_rate: float = FEE_RATE_BASE,  # from success_criteria (Jupiter-measured)
         latency_model: Optional[LatencyModel] = None,
+        augment: bool = True,
     ):
         self.features = features
-        # Augment with cross-pair features if btc/eth data available
-        try:
-            _, btc_feats, eth_feats = load_multi_pair("SOL/USDC", limit=len(features))
-            if btc_feats is not None and eth_feats is not None:
-                self.features = add_cross_pair_features(features, btc_feats, eth_feats)
-        except Exception:
-            pass  # multi-pair unavailable; use single-pair features
+        # Augment with cross-pair features if btc/eth data available.
+        # augment=False when features were already augmented (e.g. in
+        # parallel workers receiving the parent's augmented features).
+        if augment:
+            try:
+                _, btc_feats, eth_feats = load_multi_pair("SOL/USDC", limit=len(features))
+                if btc_feats is not None and eth_feats is not None:
+                    self.features = add_cross_pair_features(features, btc_feats, eth_feats)
+            except Exception:
+                pass  # multi-pair unavailable; use single-pair features
         self.initial_capital = initial_capital
         self.fee_rate = fee_rate
         # Search uses deterministic expected MEV drag (not coin-flip noise)
@@ -439,11 +444,14 @@ class GenomeEvaluator:
                 vol = f.get("volatility_4h", f.get("volatility_1h", 50))
                 size = min(genome.sizing_base * (50 / max(vol, 1)), genome.sizing_max)
             elif genome.sizing_method == "kelly":
+                # Kelly fraction f* = p - (1-p)/b, with b = avg_win/avg_loss.
+                # (Old formula divided by avg_win*avg_loss, giving f*≈65 —
+                # i.e. "kelly" silently meant "always max size".)
                 win_rate, avg_win, avg_loss = 0.55, 0.01, 0.005
-                kelly = (win_rate * avg_win - (1 - win_rate) * avg_loss) / max(
-                    avg_win * avg_loss, 1e-9
-                )
-                size = min(max(kelly * 0.1, 0.05), genome.sizing_max)
+                b = avg_win / max(avg_loss, 1e-9)
+                kelly = win_rate - (1.0 - win_rate) / b  # ≈ 0.325
+                # Half-Kelly for safety, clamped to [5%, sizing_max]
+                size = min(max(kelly * 0.5, 0.05), genome.sizing_max)
             else:
                 size = genome.sizing_base
 
@@ -453,6 +461,33 @@ class GenomeEvaluator:
             return (direction, strength, size)
 
         return signal_fn
+
+
+# ---------------------------------------------------------------------------
+# Multiprocessing workers (module-level so they are picklable under spawn).
+# Each worker process builds one evaluator from the parent's already-augmented
+# features and reuses it for every genome it receives.
+# ---------------------------------------------------------------------------
+_WORKER_EVALUATOR: Optional["GenomeEvaluator"] = None
+
+
+def _init_eval_worker(
+    features: List[Dict[str, Any]],
+    initial_capital: float,
+    fee_rate: float,
+) -> None:
+    global _WORKER_EVALUATOR
+    _WORKER_EVALUATOR = GenomeEvaluator(
+        features,
+        initial_capital=initial_capital,
+        fee_rate=fee_rate,
+        augment=False,
+    )
+
+
+def _eval_worker(genome_dict: Dict[str, Any]) -> Dict[str, Any]:
+    genome = StrategyGenome.from_dict(genome_dict)
+    return _WORKER_EVALUATOR.evaluate(genome)
 
 
 class EvolutionEngine:
@@ -467,6 +502,8 @@ class EvolutionEngine:
         crossover_rate: float = 0.7,
         immigrant_rate: float = 0.15,
         use_kill_archive: bool = True,
+        seed_genomes: Optional[List[StrategyGenome]] = None,
+        n_workers: Optional[int] = None,
     ):
         self.features = features
         self.population_size = population_size
@@ -476,8 +513,40 @@ class EvolutionEngine:
         # Fraction of each generation that is fresh random immigrants
         self.immigrant_rate = immigrant_rate
         self.use_kill_archive = use_kill_archive
+        # Warm-start seeds (e.g. past champions) injected into gen-0 population
+        self.seed_genomes = list(seed_genomes or [])
 
         self.evaluator = GenomeEvaluator(features)
+
+        # Calibrate threshold sampling ranges to the actual (augmented) data
+        # so random/mutated conditions land where they can actually flip.
+        try:
+            from evolution.genome import calibrate_threshold_ranges
+            n_cal = calibrate_threshold_ranges(self.evaluator.features)
+            if n_cal:
+                print(f"  Calibrated threshold ranges for {n_cal} indicators")
+        except Exception as e:
+            print(f"  Threshold calibration skipped: {e}")
+
+        # Parallel evaluation: default to cpu_count-2 workers (min 1).
+        # Override with EVOLUTION_WORKERS env var; <=1 means serial.
+        if n_workers is None:
+            env_w = os.environ.get("EVOLUTION_WORKERS")
+            if env_w is not None:
+                try:
+                    n_workers = int(env_w)
+                except ValueError:
+                    n_workers = None
+        if n_workers is None:
+            n_workers = max(1, (os.cpu_count() or 2) - 2)
+        self.n_workers = max(1, int(n_workers))
+        self._pool = None
+
+        # Evaluation cache: identical DNA (clones, unchanged elites) never
+        # gets re-backtested. Keyed by structural signature.
+        self._eval_cache: Dict[Any, Dict[str, Any]] = {}
+        self.cache_hits = 0
+
         self.population: List[StrategyGenome] = []
         self.generation = 0
         self.history: List[Dict[str, Any]] = []
@@ -512,10 +581,39 @@ class EvolutionEngine:
         return mutate(genome, rate)
 
     def initialize_population(self):
-        """Create initial random population, stratified by strategy type."""
+        """Create initial random population, stratified by strategy type.
+
+        Warm start: past champions (and their mutated variants) are injected
+        first, capped at 20% of the population, so each cycle refines known
+        good regions instead of always restarting from pure noise.
+        """
         from evolution.genome import LOGIC_OPS
 
         self.population = []
+        max_seeds = max(0, int(self.population_size * 0.20))
+        n_seeded = 0
+        for seed in self.seed_genomes:
+            if n_seeded >= max_seeds:
+                break
+            if self.md_kill_logic(seed):
+                continue
+            base = StrategyGenome.from_dict(seed.to_dict())
+            base.genome_id = f"seed_{seed.genome_id[:24]}_{random.randint(1000, 9999)}"
+            base.backtest_results = None
+            base.fitness = 0.0
+            base.generation = 0
+            self.population.append(base)
+            n_seeded += 1
+            # Two mutated variants per seed to explore its neighborhood
+            for _ in range(2):
+                if n_seeded >= max_seeds:
+                    break
+                var = self._mutate_genome(base, self.mutation_rate)
+                var.generation = 0
+                self.population.append(var)
+                n_seeded += 1
+        if n_seeded:
+            print(f"  Warm start: seeded {n_seeded} genomes from champions")
         # Stratified seed so each strategy family gets fair exploration
         per_type = max(1, self.population_size // max(len(LOGIC_OPS), 1))
         for logic in LOGIC_OPS:
@@ -537,47 +635,123 @@ class EvolutionEngine:
     def md_kill_logic(self, genome: StrategyGenome) -> bool:
         return bool(self._kill is not None and self._kill.is_killed(genome))
 
+    def _apply_result(self, genome: StrategyGenome, result: Dict[str, Any]) -> None:
+        result = dict(result)
+        result["genome_id"] = genome.genome_id
+        genome.fitness = result["fitness"]
+        genome.backtest_results = result
+
+    def _tabu_result(self, genome: StrategyGenome) -> Dict[str, Any]:
+        return {
+            "genome_id": genome.genome_id,
+            "fitness": -400.0,
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "total_pnl": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "profit_factor": 0.0,
+            "final_capital": 100.0,
+            "killed": True,
+        }
+
+    def _get_pool(self):
+        """Lazily create the persistent worker pool (spawn-safe)."""
+        if self._pool is None and self.n_workers > 1:
+            from concurrent.futures import ProcessPoolExecutor
+            self._pool = ProcessPoolExecutor(
+                max_workers=self.n_workers,
+                initializer=_init_eval_worker,
+                initargs=(
+                    self.evaluator.features,
+                    self.evaluator.initial_capital,
+                    self.evaluator.fee_rate,
+                ),
+            )
+        return self._pool
+
+    def shutdown_pool(self) -> None:
+        if self._pool is not None:
+            try:
+                self._pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            self._pool = None
+
     def evaluate_population(self):
-        """Evaluate all genomes and assign fitness."""
-        print(f"  Evaluating {len(self.population)} genomes...")
+        """Evaluate all genomes and assign fitness.
+
+        Order of resolution per genome:
+        1. already evaluated (elites)  2. kill-archive tabu
+        3. eval cache (identical DNA)  4. backtest (parallel when n_workers>1)
+        """
+        from evolution.genome import dna_signature
+
         total = len(self.population)
         kill_n = self._kill.size if self._kill else 0
-        for i, genome in enumerate(self.population):
-            # Heartbeat every 10 genomes (not every one) — big I/O win
-            if i == 0 or (i + 1) % 10 == 0 or (i + 1) == total:
+        print(f"  Evaluating {total} genomes ({self.n_workers} workers)...")
+
+        pending: List[StrategyGenome] = []
+        for genome in self.population:
+            if genome.backtest_results is not None:
+                continue
+            if self.md_kill_logic(genome):
+                self.kill_hits += 1
+                self._apply_result(genome, self._tabu_result(genome))
+                continue
+            cached = self._eval_cache.get(dna_signature(genome))
+            if cached is not None:
+                self.cache_hits += 1
+                self._apply_result(genome, cached)
+                continue
+            pending.append(genome)
+
+        write_activity(
+            {
+                "phase": "evaluate",
+                "generation": self.generation,
+                "genome_index": total - len(pending),
+                "population": total,
+                "pending": len(pending),
+                "cache_hits": self.cache_hits,
+                "kill_archive_n": kill_n,
+            }
+        )
+
+        def _finish(genome: StrategyGenome, result: Dict[str, Any], done: int):
+            self._apply_result(genome, result)
+            if len(self._eval_cache) < 50_000:
+                self._eval_cache[dna_signature(genome)] = dict(result)
+            if done % 20 == 0 or done == len(pending):
                 write_activity(
                     {
                         "phase": "evaluate",
                         "generation": self.generation,
-                        "genome_index": i + 1,
+                        "genome_index": total - len(pending) + done,
                         "population": total,
                         "current_genome": genome.genome_id,
+                        "cache_hits": self.cache_hits,
                         "kill_archive_n": kill_n,
                     }
                 )
+                print(f"    {done}/{len(pending)} evaluated")
+
+        if pending and self.n_workers > 1:
+            try:
+                pool = self._get_pool()
+                dicts = [g.to_dict() for g in pending]
+                for done, (genome, result) in enumerate(
+                    zip(pending, pool.map(_eval_worker, dicts, chunksize=4)), 1
+                ):
+                    _finish(genome, result, done)
+                return
+            except Exception as e:
+                print(f"  Parallel evaluation failed ({e}); falling back to serial")
+                self.shutdown_pool()
+
+        for done, genome in enumerate(pending, 1):
             if genome.backtest_results is None:
-                # Hard short-circuit: known-killed neighborhoods get tabu fitness
-                if self.md_kill_logic(genome):
-                    self.kill_hits += 1
-                    genome.fitness = -400.0
-                    genome.backtest_results = {
-                        "genome_id": genome.genome_id,
-                        "fitness": -400.0,
-                        "total_trades": 0,
-                        "win_rate": 0.0,
-                        "total_pnl": 0.0,
-                        "sharpe_ratio": 0.0,
-                        "max_drawdown": 0.0,
-                        "profit_factor": 0.0,
-                        "final_capital": 100.0,
-                        "killed": True,
-                    }
-                else:
-                    result = self.evaluator.evaluate(genome)
-                    genome.fitness = result["fitness"]
-                    genome.backtest_results = result
-            if (i + 1) % 10 == 0:
-                print(f"    {i + 1}/{total} evaluated")
+                _finish(genome, self.evaluator.evaluate(genome), done)
 
     def select_parents(self) -> List[StrategyGenome]:
         """Tournament selection with elite carry-over."""
@@ -761,6 +935,7 @@ class EvolutionEngine:
                     )
                 break
 
+        self.shutdown_pool()
         best = max(self.population, key=lambda g: g.fitness)
         elapsed = time.time() - start_time
         write_activity(
@@ -778,6 +953,7 @@ class EvolutionEngine:
             print(f"  Generations: {gen}")
             print(f"  Best fitness: {best.fitness:.2f}")
             print(f"  Best genome: {best.genome_id}")
+            print(f"  Eval cache hits: {self.cache_hits}")
             bt = best.backtest_results or {}
             print(
                 f"  trades={bt.get('total_trades')} win={bt.get('win_rate')} "

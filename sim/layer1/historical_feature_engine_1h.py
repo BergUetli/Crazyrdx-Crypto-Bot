@@ -683,10 +683,16 @@ def get_historical_features_1h(
         query += " AND ts <= ?"
         params.append(end_ts)
 
-    query += " ORDER BY ts"
-
     if limit:
-        query += f" LIMIT {limit}"
+        # Most RECENT `limit` rows, returned in chronological order.
+        # (Plain ORDER BY ts LIMIT n silently returned the OLDEST rows, so
+        # once the DB outgrew the limit the bot never saw recent data.)
+        query = (
+            f"SELECT * FROM ({query} ORDER BY ts DESC LIMIT {int(limit)}) "
+            "ORDER BY ts"
+        )
+    else:
+        query += " ORDER BY ts"
 
     cursor = conn.execute(query, params)
     rows = []
