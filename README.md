@@ -56,9 +56,9 @@ python3 sim/dashboard.py
 
 # To view it from another computer on the same WiFi (e.g. Windows PC):
 python3 sim/dashboard.py --lan
-# Then visit http://<your-macs-ip>:8765 
+# Then visit http://<your-macs-ip>:8765
 ```
-*Note: To find your Mac's IP address, run `ipconfig getifaddr en0` in the terminal.*
+*Note: To find your Mac's IP address, run `ipconfig getifaddr en0` in the terminal. Your home WiFi router acts as a firewall, so this dashboard is securely visible to other devices on your home network, but completely hidden from the public internet and your neighbors.*
 
 ## 🛡️ The Promotion Gauntlet
 If the GA finds a strategy that scores well, it enters the `PromotionFunnel`. A strategy only hits the `Shortlist` if it passes:
