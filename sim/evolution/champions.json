@@ -1,5 +1,5 @@
 {
-  "updated_ts": 1785529784.905115,
+  "updated_ts": 1785529949.532544,
   "n": 7,
   "champions": [
     {
@@ -390,65 +390,56 @@
       "ts": 1785529632.9339561
     },
     {
-      "genome_id": "mut_cross_mut_cros_clone_cr_3794_7553",
-      "score": 2.5437187195949104e+17,
+      "genome_id": "cross_clone_mu_cross_cl_3908",
+      "score": 2.768261836815208e+17,
       "signature": [
         "AND",
         [
           [
-            "volume_roc_4h",
-            ">",
-            1.7792
-          ],
-          [
-            "volume_roc_4h",
-            ">",
-            2.867
+            "trend_alignment_all",
+            ">=",
+            -0.3587
           ]
         ],
         "kelly",
-        0.3575,
+        0.3577,
         [
           [
             "profit_target",
-            0.006916
+            0.006616
           ],
           [
             "profit_target",
-            0.003759
+            0.006616
           ],
           [
-            "profit_target",
-            0.003759
+            "signal_reversal",
+            0.875693
           ]
         ]
       ],
       "family_key": [
         "AND",
         [
-          "volume_roc_4h"
+          "trend_alignment_all"
         ],
         [
           [
-            "volume_roc_4h",
+            "trend_alignment_all",
             ">="
           ]
         ],
         [
-          "profit_target"
+          "profit_target",
+          "signal_reversal"
         ]
       ],
       "genome": {
         "entry_conditions": [
           {
-            "indicator": "volume_roc_4h",
-            "operator": ">",
-            "threshold": 1.7792149446471757
-          },
-          {
-            "indicator": "volume_roc_4h",
-            "operator": ">",
-            "threshold": 2.8669781859475334
+            "indicator": "trend_alignment_all",
+            "operator": ">=",
+            "threshold": -0.3587026895597494
           }
         ],
         "entry_logic": "AND",
@@ -457,60 +448,62 @@
             "filter_type": "time_of_day",
             "params": {
               "hours": [
-                22,
-                20,
                 16,
-                7,
                 18
               ]
+            }
+          },
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 5,
+              "direction": "down"
             }
           },
           {
             "filter_type": "time_of_day",
             "params": {
               "hours": [
-                22,
-                20,
                 16,
-                7,
                 18
               ]
             }
           }
         ],
         "sizing_method": "kelly",
-        "sizing_base": 0.35747160285022483,
-        "sizing_max": 0.75117678861306,
+        "sizing_base": 0.35768859657137286,
+        "sizing_max": 0.5882201218839966,
         "exit_rules": [
           {
             "exit_type": "profit_target",
-            "value": 0.0069159646302760815
+            "value": 0.006615990600142198
           },
           {
             "exit_type": "profit_target",
-            "value": 0.0037594375394324293
+            "value": 0.006615990600142198
           },
           {
-            "exit_type": "profit_target",
-            "value": 0.0037594375394324293
+            "exit_type": "signal_reversal",
+            "value": 0.8756930693704112
           }
         ],
-        "genome_id": "mut_cross_mut_cros_clone_cr_3794_7553",
-        "generation": 42,
+        "genome_id": "cross_clone_mu_cross_cl_3908",
+        "generation": 48,
         "parent_ids": [
-          "cross_mut_cros_clone_cr_3794"
+          "clone_mut_cross_mut_clon_clone_cl_5188_5506_7123",
+          "cross_clone_cl_clone_cl_3669"
         ],
-        "fitness": 2.5437187195949104e+17,
+        "fitness": 3.5918147997686726e+17,
         "backtest_results": {
-          "genome_id": "mut_cross_mut_cros_clone_cr_3794_7553",
-          "fitness": 2.5437187195949104e+17,
-          "total_trades": 30,
-          "win_rate": 0.9,
-          "total_pnl": 1.7206808094969772,
-          "sharpe_ratio": 23.459594152355873,
-          "max_drawdown": 0.05431915842979728,
-          "profit_factor": 1.2488978050142832,
-          "final_capital": 101.72068080949695
+          "genome_id": "cross_clone_mu_cross_cl_3908",
+          "fitness": 3.5918147997686726e+17,
+          "total_trades": 52,
+          "win_rate": 0.9423076923076923,
+          "total_pnl": 9.522346729402692,
+          "sharpe_ratio": 98.588218943137,
+          "max_drawdown": 0.035982961515552754,
+          "profit_factor": 2.508234771702485,
+          "final_capital": 109.52234672940267
         }
       },
       "gates_summary": {
@@ -536,7 +529,7 @@
           "passed": true
         }
       },
-      "ts": 1785529756.411585
+      "ts": 1785529920.934224
     },
     {
       "genome_id": "mut_cross_mut_clon_clone_cl_7201_1244",

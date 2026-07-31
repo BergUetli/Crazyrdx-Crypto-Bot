@@ -1,6 +1,6 @@
 {
-  "updated_ts": 1785529859.75367,
-  "n": 761,
+  "updated_ts": 1785530078.409624,
+  "n": 778,
   "entries": {
     "OR::returns_kurtosis_1d|<=|b4+returns_kurtosis_1d|<=|b4+trend_alignment_all|<|b7": {
       "key": "OR::returns_kurtosis_1d|<=|b4+returns_kurtosis_1d|<=|b4+trend_alignment_all|<|b7",
@@ -27376,6 +27376,547 @@
       "last_reason": "feasibility",
       "last_meta": {
         "genome_id": "cross_clone_cr_cross_ge_2233"
+      }
+    },
+    "OR::trend_alignment_all|>=|b2+volume_roc_1d|<|b6+volume_roc_1d|>|b5": {
+      "key": "OR::trend_alignment_all|>=|b2+volume_roc_1d|<|b6+volume_roc_1d|>|b5",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529920.948406,
+      "last_ts": 1785529920.948409,
+      "example_id": "mut_clone_cross_clone_cl_clone_cl_7350_9131_1865",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "volume_roc_1d",
+          "operator": ">",
+          "threshold": 3.8707302166387914,
+          "bin": 5
+        },
+        {
+          "indicator": "volume_roc_1d",
+          "operator": "<",
+          "threshold": 4.177982467986822,
+          "bin": 6
+        },
+        {
+          "indicator": "trend_alignment_all",
+          "operator": ">=",
+          "threshold": -0.3587026895597494,
+          "bin": 2
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_clone_cross_clone_cl_clone_cl_7350_9131_1865"
+      }
+    },
+    "AND::trend_alignment_all|>=|b5": {
+      "key": "AND::trend_alignment_all|>=|b5",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529920.96812,
+      "last_ts": 1785529920.968122,
+      "example_id": "clone_mut_cross_mut_clon_clone_mu_5248_4752_5180",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_all",
+          "operator": ">=",
+          "threshold": 0.2744886420242314,
+          "bin": 5
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "clone_mut_cross_mut_clon_clone_mu_5248_4752_5180"
+      }
+    },
+    "AND::momentum_divergence_1h_1d|>=|b6+trend_alignment_1h_4h|>|b6+trend_alignment_1h_4h|>|b6": {
+      "key": "AND::momentum_divergence_1h_1d|>=|b6+trend_alignment_1h_4h|>|b6+trend_alignment_1h_4h|>|b6",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529993.244742,
+      "last_ts": 1785529993.244746,
+      "example_id": "cross_clone_cr_clone_cr_9074",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "momentum_divergence_1h_1d",
+          "operator": ">=",
+          "threshold": 61.713635297080145,
+          "bin": 6
+        },
+        {
+          "indicator": "trend_alignment_1h_4h",
+          "operator": ">",
+          "threshold": 0.662492467087231,
+          "bin": 6
+        },
+        {
+          "indicator": "trend_alignment_1h_4h",
+          "operator": ">",
+          "threshold": 0.662492467087231,
+          "bin": 6
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "cross_clone_cr_clone_cr_9074"
+      }
+    },
+    "AND::momentum_divergence_1h_1d|>=|b6": {
+      "key": "AND::momentum_divergence_1h_1d|>=|b6",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529993.260323,
+      "last_ts": 1785529993.2603252,
+      "example_id": "cross_mut_clon_clone_cl_5427",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "momentum_divergence_1h_1d",
+          "operator": ">=",
+          "threshold": 61.713635297080145,
+          "bin": 6
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "cross_mut_clon_clone_cl_5427"
+      }
+    },
+    "OR::momentum_divergence_1h_1d|>=|b6+momentum_divergence_1h_1d|>=|b6+trend_alignment_1h_4h|<|b5": {
+      "key": "OR::momentum_divergence_1h_1d|>=|b6+momentum_divergence_1h_1d|>=|b6+trend_alignment_1h_4h|<|b5",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529993.277032,
+      "last_ts": 1785529993.277035,
+      "example_id": "clone_mut_clone_clone_cross_clone_cr_cross_cl_7319_7372_5114_2063_1358",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_1h_4h",
+          "operator": "<",
+          "threshold": 0.41697546160004473,
+          "bin": 5
+        },
+        {
+          "indicator": "momentum_divergence_1h_1d",
+          "operator": ">=",
+          "threshold": 61.713635297080145,
+          "bin": 6
+        },
+        {
+          "indicator": "momentum_divergence_1h_1d",
+          "operator": ">=",
+          "threshold": 61.713635297080145,
+          "bin": 6
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "clone_mut_clone_clone_cross_clone_cr_cross_cl_7319_7372_5114_2063_1358"
+      }
+    },
+    "OR::momentum_divergence_1h_1d|>|b6+volume_lag_1|<|b5": {
+      "key": "OR::momentum_divergence_1h_1d|>|b6+volume_lag_1|<|b5",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529993.292604,
+      "last_ts": 1785529993.292607,
+      "example_id": "mut_cross_clone_cr_clone_cr_8849_5364",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "momentum_divergence_1h_1d",
+          "operator": ">",
+          "threshold": 61.713635297080145,
+          "bin": 6
+        },
+        {
+          "indicator": "volume_lag_1",
+          "operator": "<",
+          "threshold": 3.7230193847760593,
+          "bin": 5
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cr_clone_cr_8849_5364"
+      }
+    },
+    "MEANREV::cex_dex_basis_roc_4h|>=|b7+trend_alignment_1h_4h|>|b6+volatility_regime_4h_1d|<|b6": {
+      "key": "MEANREV::cex_dex_basis_roc_4h|>=|b7+trend_alignment_1h_4h|>|b6+volatility_regime_4h_1d|<|b6",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529993.319715,
+      "last_ts": 1785529993.31972,
+      "example_id": "cross_gen_51_1_cross_cl_8445",
+      "logic": "MEANREV",
+      "conditions": [
+        {
+          "indicator": "cex_dex_basis_roc_4h",
+          "operator": ">=",
+          "threshold": 157.84263957450884,
+          "bin": 7
+        },
+        {
+          "indicator": "volatility_regime_4h_1d",
+          "operator": "<",
+          "threshold": 437.4465812774284,
+          "bin": 6
+        },
+        {
+          "indicator": "trend_alignment_1h_4h",
+          "operator": ">",
+          "threshold": 0.662492467087231,
+          "bin": 6
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_gen_51_1_cross_cl_8445"
+      }
+    },
+    "OR::cex_dex_basis_roc_1d|<|b3+taker_buy_sma_ratio|<|b6+volatility_3d|<=|b3+volatility_3d|<=|b4": {
+      "key": "OR::cex_dex_basis_roc_1d|<|b3+taker_buy_sma_ratio|<|b6+volatility_3d|<=|b3+volatility_3d|<=|b4",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785530052.384646,
+      "last_ts": 1785530052.38465,
+      "example_id": "cross_mut_clon_mut_clon_8684",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 201.47645392145384,
+          "bin": 3
+        },
+        {
+          "indicator": "cex_dex_basis_roc_1d",
+          "operator": "<",
+          "threshold": -40.23764770797604,
+          "bin": 3
+        },
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 266.79050034010885,
+          "bin": 4
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": "<",
+          "threshold": 4.157045163256038,
+          "bin": 6
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_mut_clon_mut_clon_8684"
+      }
+    },
+    "OR::cex_dex_basis_roc_1d|<|b3+taker_buy_sma_ratio|<|b5+taker_buy_sma_ratio|>|b3+volatility_3d|<=|b4": {
+      "key": "OR::cex_dex_basis_roc_1d|<|b3+taker_buy_sma_ratio|<|b5+taker_buy_sma_ratio|>|b3+volatility_3d|<=|b4",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785530052.4042308,
+      "last_ts": 1785530052.404234,
+      "example_id": "mut_cross_clone_cl_clone_cr_1070_7127",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "cex_dex_basis_roc_1d",
+          "operator": "<",
+          "threshold": -40.23764770797604,
+          "bin": 3
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": "<",
+          "threshold": 3.708983558256163,
+          "bin": 5
+        },
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 313.1990004804494,
+          "bin": 4
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": ">",
+          "threshold": 2.2882676424435546,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cl_clone_cr_1070_7127"
+      }
+    },
+    "OR::cex_dex_basis_roc_1d|>|b3+taker_buy_sma_ratio|>|b4+volatility_3d|<=|b2+volatility_3d|<=|b3": {
+      "key": "OR::cex_dex_basis_roc_1d|>|b3+taker_buy_sma_ratio|>|b4+volatility_3d|<=|b2+volatility_3d|<=|b3",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785530052.425318,
+      "last_ts": 1785530052.425322,
+      "example_id": "clone_mut_clone_clone_clone_cross_mut_clon_mut_clon_8684_9521_1742_6756_8755_2738",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 201.47645392145384,
+          "bin": 3
+        },
+        {
+          "indicator": "cex_dex_basis_roc_1d",
+          "operator": ">",
+          "threshold": -40.23764770797604,
+          "bin": 3
+        },
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 161.77464073014949,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": ">",
+          "threshold": 2.678142314164353,
+          "bin": 4
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "clone_mut_clone_clone_clone_cross_mut_clon_mut_clon_8684_9521_1742_6756_8755_2738"
+      }
+    },
+    "OR::cex_dex_basis_roc_1d|>|b3": {
+      "key": "OR::cex_dex_basis_roc_1d|>|b3",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785530052.446404,
+      "last_ts": 1785530052.4464068,
+      "example_id": "mut_cross_cross_cr_clone_cl_3079_7017",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "cex_dex_basis_roc_1d",
+          "operator": ">",
+          "threshold": -40.23764770797604,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cr_clone_cl_3079_7017"
+      }
+    },
+    "OR::cex_dex_basis_roc_1d|<|b3+volatility_3d|<=|b3+volatility_3d|<=|b4+volatility_3d|<=|b4": {
+      "key": "OR::cex_dex_basis_roc_1d|<|b3+volatility_3d|<=|b3+volatility_3d|<=|b4+volatility_3d|<=|b4",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785530052.46902,
+      "last_ts": 1785530052.469023,
+      "example_id": "cross_clone_cl_cross_cl_6316",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 266.79050034010885,
+          "bin": 4
+        },
+        {
+          "indicator": "cex_dex_basis_roc_1d",
+          "operator": "<",
+          "threshold": -40.23764770797604,
+          "bin": 3
+        },
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 266.79050034010885,
+          "bin": 4
+        },
+        {
+          "indicator": "volatility_3d",
+          "operator": "<=",
+          "threshold": 201.47645392145384,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_clone_cl_cross_cl_6316"
+      }
+    },
+    "AND::price_roc_1w|<|b3": {
+      "key": "AND::price_roc_1w|<|b3",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785530078.3340778,
+      "last_ts": 1785530078.334081,
+      "example_id": "cross_clone_cr_clone_cl_7829",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": "<",
+          "threshold": 87.57500085855591,
+          "bin": 3
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "cross_clone_cr_clone_cl_7829"
+      }
+    },
+    "OR::price_roc_1w|<|b3": {
+      "key": "OR::price_roc_1w|<|b3",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785530078.358073,
+      "last_ts": 1785530078.3580759,
+      "example_id": "mut_clone_clone_cross_clone_cr_clone_cl_7829_6580_2373_8638",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": "<",
+          "threshold": 87.57500085855591,
+          "bin": 3
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_clone_clone_cross_clone_cr_clone_cl_7829_6580_2373_8638"
+      }
+    },
+    "OR::price_roc_1w|<|b3+price_roc_1w|<|b3+volatility_4h|>=|b1": {
+      "key": "OR::price_roc_1w|<|b3+price_roc_1w|<|b3+volatility_4h|>=|b1",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785530078.376757,
+      "last_ts": 1785530078.37676,
+      "example_id": "clone_mut_clone_clone_clone_mut_cross_clone_cr_clone_cl_8327_2483_4633_7822_6995_9872_3895",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": "<",
+          "threshold": 87.57500085855591,
+          "bin": 3
+        },
+        {
+          "indicator": "price_roc_1w",
+          "operator": "<",
+          "threshold": 87.57500085855591,
+          "bin": 3
+        },
+        {
+          "indicator": "volatility_4h",
+          "operator": ">=",
+          "threshold": 103.71733685972647,
+          "bin": 1
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "clone_mut_clone_clone_clone_mut_cross_clone_cr_clone_cl_8327_2483_4633_7822_6995_9872_3895"
+      }
+    },
+    "AND::price_roc_1w|<|b5+price_roc_1w|>|b3": {
+      "key": "AND::price_roc_1w|<|b5+price_roc_1w|>|b3",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785530078.3914392,
+      "last_ts": 1785530078.3914418,
+      "example_id": "mut_cross_clone_cr_clone_cl_4816_9038",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": ">",
+          "threshold": 87.57500085855591,
+          "bin": 3
+        },
+        {
+          "indicator": "price_roc_1w",
+          "operator": "<",
+          "threshold": 150.90803629671728,
+          "bin": 5
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cr_clone_cl_4816_9038"
+      }
+    },
+    "OR::price_roc_1w|<=|b2+trend_alignment_1h_4h|<|b3": {
+      "key": "OR::price_roc_1w|<=|b2+trend_alignment_1h_4h|<|b3",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785530078.409607,
+      "last_ts": 1785530078.40961,
+      "example_id": "mut_cross_clone_cr_clone_cl_1864_1571",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": "<=",
+          "threshold": 53.77756504620073,
+          "bin": 2
+        },
+        {
+          "indicator": "trend_alignment_1h_4h",
+          "operator": "<",
+          "threshold": -0.2384591995048959,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cr_clone_cl_1864_1571"
       }
     }
   }

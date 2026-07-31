@@ -186,8 +186,8 @@ def random_genome(generation: int = 0) -> StrategyGenome:
         "taker_flow_imbalance", "taker_flow_imbalance_4h", "taker_flow_persistence",
         "funding_basis_divergence", "market_stress_index",
     ]
-    # Weighted pool: external features appear 2x, regular 1x
-    weighted_indicators = list(INDICATORS) + EXTERNAL_BOOST
+    # Weighted pool: external features appear 4x for strong exploration
+    weighted_indicators = list(INDICATORS) + EXTERNAL_BOOST + EXTERNAL_BOOST + EXTERNAL_BOOST
 
     n_conditions = random.choices([1, 2, 3, 4], weights=[2, 4, 3, 1])[0]
     conditions = []
