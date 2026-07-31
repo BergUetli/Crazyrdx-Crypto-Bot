@@ -111,6 +111,9 @@ class BacktestResult:
 class LatencyModel:
     """
     Models execution latency and its impact on price.
+
+    Default is deterministic (expected MEV drag). Set stochastic=True only for
+    Monte Carlo stress tests. Random fill noise must not drive search ranking.
     """
 
     def __init__(
@@ -119,15 +122,19 @@ class LatencyModel:
         latency_std_s: float = 3.0,
         mev_probability: float = 0.3,
         mev_cost_bps: float = 15.0,
+        stochastic: bool = False,
     ):
         self.base_latency = base_latency_s
         self.latency_std = latency_std_s
         self.mev_probability = mev_probability
         self.mev_cost_bps = mev_cost_bps
+        self.stochastic = stochastic
 
     def sample_latency(self) -> float:
-        """Sample actual latency from distribution."""
-        return max(1.0, np.random.normal(self.base_latency, self.latency_std))
+        """Latency sample. Deterministic base latency unless stochastic=True."""
+        if not self.stochastic:
+            return max(1.0, float(self.base_latency))
+        return max(1.0, float(np.random.normal(self.base_latency, self.latency_std)))
 
     def get_execution_price(
         self,
@@ -187,9 +194,13 @@ class LatencyModel:
         else:
             slippage_bps = (signal_price - execution_price) / max(signal_price, 1e-12) * 10000
 
-        mev_cost = 0.0
-        if np.random.random() < self.mev_probability:
-            mev_cost = self.mev_cost_bps
+        # MEV: expected drag in search (deterministic). Coin-flip only if stochastic.
+        if self.stochastic:
+            mev_cost = self.mev_cost_bps if np.random.random() < self.mev_probability else 0.0
+        else:
+            mev_cost = float(self.mev_probability) * float(self.mev_cost_bps)
+
+        if mev_cost > 0:
             if direction == "long":
                 execution_price *= 1 + mev_cost / 10000
             else:
@@ -338,32 +349,40 @@ class BacktestEngine:
         winning_trades = sum(1 for t in trades if t.net_pnl > 0)
         total_pnl = sum(t.net_pnl for t in trades)
 
-        # Sharpe from trade-to-trade equity returns (bar-size independent enough for ranking)
-        if len(equity_curve) > 1:
-            returns = [(equity_curve[j] - equity_curve[j-1]) / equity_curve[j-1]
-                       for j in range(1, len(equity_curve))]
-            if returns:
-                mean_ret = np.mean(returns)
-                std_ret = np.std(returns)
-                if std_ret > 0:
-                    # Annualize: 105120 5-minute periods per year
-                    sharpe = (mean_ret / std_ret) * math.sqrt(105120)
-                else:
-                    sharpe = 0.0
-            else:
-                sharpe = 0.0
-        else:
-            sharpe = 0.0
+        # Risk-adjusted score from per-trade returns (net_pnl / size).
+        # DO NOT use equity-path returns * sqrt(105120 5m bars): that was wrong for
+        # 1h trade sequences and blew up to 1e17 when std was tiny.
+        sharpe = 0.0
+        if total_trades >= 2:
+            trade_rets = [
+                t.net_pnl / max(float(t.size_usd), 1e-9)
+                for t in trades
+                if t.size_usd and t.size_usd > 0
+            ]
+            if len(trade_rets) >= 2:
+                mean_ret = float(np.mean(trade_rets))
+                std_ret = float(np.std(trade_rets))
+                if std_ret > 1e-8:
+                    # Scale by sqrt(n_trades), capped so thin samples cannot explode.
+                    # This is a ranking statistic, not a publishable annualized Sharpe.
+                    scale = math.sqrt(min(len(trade_rets), 50))
+                    sharpe = (mean_ret / std_ret) * scale
+                elif abs(mean_ret) > 0:
+                    sharpe = 0.0  # zero variance: refuse infinite ratio
+            # Hard clamp — real trade Sharpes over short samples are small
+            sharpe = float(max(-5.0, min(5.0, sharpe)))
 
-        # Max drawdown
-        peak = equity_curve[0]
+        # Max drawdown (floor equity so one wipe does not NaN)
+        peak = max(equity_curve[0], 1e-9)
         max_dd = 0.0
         for val in equity_curve:
-            if val > peak:
-                peak = val
-            dd = (peak - val) / peak
+            v = max(float(val), 1e-9)
+            if v > peak:
+                peak = v
+            dd = (peak - v) / peak
             if dd > max_dd:
                 max_dd = dd
+        max_dd = float(min(max(max_dd, 0.0), 1.0))
 
         # Win rate
         win_rate = winning_trades / total_trades if total_trades > 0 else 0.0

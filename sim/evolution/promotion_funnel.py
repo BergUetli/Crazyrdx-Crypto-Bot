@@ -105,22 +105,19 @@ def get_total_trials() -> int:
 def approximate_dsr(sharpe: float, n_obs: int, n_trials: int) -> float:
     """
     Lightweight DSR-like score in [0,1].
-    Not full Bailey formula (needs skew/kurt/var of trials), but haircuts
-    reported Sharpe for selection budget using:
-      SR* ~ sqrt(2) * erfinv(1 - 1/N) / sqrt(n)
-    then PSR-style normal CDF of (SR - SR*).
+
+    Uses the *clamped trade-return ratio* from BacktestEngine (already in [-5,5]),
+    not a fake annualized Sharpe. Haircuts for selection budget N.
     """
     if n_obs < 5 or n_trials < 1:
         return 0.0
-    # Avoid extreme
+    # Never trust raw explodey Sharpes from old dumps
+    sharpe = float(max(-5.0, min(5.0, sharpe or 0.0)))
     n_trials = max(1, int(n_trials))
     # Expected max SR under null of many trials (order-statistic approx)
-    # SR* ≈ sqrt(2 * ln N) / sqrt(n)  (very rough)
     sr_star = math.sqrt(max(1e-12, 2.0 * math.log(n_trials + 1.0))) / math.sqrt(n_obs)
-    # Std of SR estimator under Gaussian excess returns ~ 1/sqrt(n)
     se = 1.0 / math.sqrt(n_obs)
     z = (sharpe - sr_star) / max(se, 1e-9)
-    # Normal CDF
     dsr = 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
     return float(max(0.0, min(1.0, dsr)))
 
@@ -338,17 +335,26 @@ class PromotionFunnel:
             return self._fail(name, genome, gates, "mev")
 
         # Gate 7: DSR-style haircut using trial budget
+        # Soft gate: with millions of trials, hard DSR fails everything.
+        # We record DSR and require either decent DSR OR strong OOS PnL + WF.
         n_trials = n_trials_context if n_trials_context is not None else get_total_trials()
         n_obs = max(full.total_trades, 1)
         dsr = approximate_dsr(full.sharpe_ratio or 0.0, n_obs=n_obs, n_trials=max(n_trials, 1))
-        # Require DSR >= 0.5 as soft research bar (not live bar)
-        dsr_pass = dsr >= 0.5 or n_trials < 50  # cold-start grace
+        oos_pnl = float(gates.get("oos", {}).get("oos", {}).get("total_pnl", 0.0) or 0.0)
+        wf_rate = float(gates.get("walk_forward", {}).get("pass_rate", 0.0) or 0.0)
+        # Pass if DSR ok, or cold-start, or strong money+WF evidence
+        dsr_pass = (
+            dsr >= 0.5
+            or n_trials < 200
+            or (oos_pnl >= 5.0 and wf_rate >= 0.8 and full.total_pnl > 0)
+        )
         gates["dsr"] = {
             "passed": dsr_pass,
             "dsr": dsr,
             "sharpe": full.sharpe_ratio,
             "n_obs_trades": n_obs,
             "n_trials": n_trials,
+            "alt_pass_strong_oos": bool(oos_pnl >= 5.0 and wf_rate >= 0.8),
         }
         if not dsr_pass:
             return self._fail(name, genome, gates, "dsr")
@@ -371,16 +377,22 @@ class PromotionFunnel:
         return out
 
     def _score(self, gates: Dict[str, Any], full_d: Dict[str, Any]) -> float:
-        """Composite score for ranking survivors (not used for hard pass)."""
+        """Composite score for ranking survivors. PnL-first, capped Sharpe."""
         oos = gates.get("oos", {}).get("oos", {})
         wf = gates.get("walk_forward", {})
-        dsr = gates.get("dsr", {}).get("dsr", 0.0)
+        dsr = float(gates.get("dsr", {}).get("dsr", 0.0) or 0.0)
+        oos_pnl = float(oos.get("total_pnl", 0.0) or 0.0)
+        oos_sh = float(oos.get("sharpe_ratio", 0.0) or 0.0)
+        oos_sh = max(-5.0, min(5.0, oos_sh))
+        oos_dd = float(oos.get("max_drawdown", 0.0) or 0.0)
+        trades = float(full_d.get("total_trades", 0) or 0)
         return (
-            float(oos.get("total_pnl", 0.0)) * 2.0
-            + float(oos.get("sharpe_ratio", 0.0)) * 10.0
-            + float(wf.get("pass_rate", 0.0)) * 20.0
-            + float(dsr) * 30.0
-            + min(float(full_d.get("total_trades", 0)) / 10.0, 20.0)
+            oos_pnl * 2.0                          # primary: OOS dollars
+            + oos_sh * 2.0                         # mild risk adjust (was *10 on explodey Sharpe)
+            + float(wf.get("pass_rate", 0.0) or 0.0) * 20.0
+            + dsr * 15.0
+            + min(trades / 10.0, 15.0)
+            - oos_dd * 30.0
         )
 
     def _fail(

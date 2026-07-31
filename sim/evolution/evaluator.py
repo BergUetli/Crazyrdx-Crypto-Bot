@@ -35,10 +35,22 @@ def write_activity(state: Dict[str, Any]) -> None:
 
 
 class GenomeEvaluator:
-    """Evaluates strategy genomes via backtesting."""
+    """Evaluates strategy genomes via backtesting.
+
+    Selection goal (what we chase):
+      OOS paper profit after fees, with enough trades, without crazy drawdowns.
+      Fitness is a ranking score in roughly [-200, +200], NOT dollars and NOT
+      annualized Sharpe.
+
+    Not the goal:
+      Inflated Sharpe, win-rate theater, or any metric that can explode to 1e17.
+    """
 
     MIN_TRADES_FULL = 30
     MIN_TRADES_OOS = 10
+    # Hard bounds so one bad metric can never dominate selection/display
+    FITNESS_MIN = -250.0
+    FITNESS_MAX = 250.0
 
     def __init__(
         self,
@@ -50,8 +62,9 @@ class GenomeEvaluator:
         self.features = features
         self.initial_capital = initial_capital
         self.fee_rate = fee_rate
+        # Search uses deterministic expected MEV drag (not coin-flip noise)
         self.latency_model = latency_model or LatencyModel(
-            base_latency_s=10.0, mev_probability=0.3
+            base_latency_s=10.0, mev_probability=0.3, stochastic=False
         )
         self.engine = BacktestEngine(
             initial_capital=initial_capital,
@@ -97,14 +110,20 @@ class GenomeEvaluator:
             fitness = -80.0 + oos.total_trades
         else:
             fitness = self._score_result(oos)
-            # Mild consistency check vs first segment
+            # Consistency: if OOS makes money but IS is a large loss, haircut.
+            # If OOS is much weaker than a strong IS, mild haircut (overfit smell).
             is_features = self.features[:split]
             if len(is_features) >= 80:
                 is_res = self._run_raw(genome, is_features)
-                if is_res.total_trades >= 10 and is_res.total_pnl != 0:
-                    ratio = oos.total_pnl / abs(is_res.total_pnl)
-                    if ratio < 0.3 and oos.total_pnl < is_res.total_pnl:
+                if is_res.total_trades >= 10:
+                    if oos.total_pnl > 0 and is_res.total_pnl < -abs(oos.total_pnl):
                         fitness *= 0.5
+                    elif is_res.total_pnl > 1.0 and oos.total_pnl > 0:
+                        ratio = oos.total_pnl / max(is_res.total_pnl, 1e-9)
+                        if ratio < 0.3:
+                            fitness *= 0.7
+
+        fitness = self._clamp_fitness(fitness)
 
         return {
             "genome_id": genome.genome_id,
@@ -117,6 +136,11 @@ class GenomeEvaluator:
             "profit_factor": full.profit_factor,
             "final_capital": full.final_capital,
         }
+
+    def _clamp_fitness(self, x: float) -> float:
+        if x != x or x in (float("inf"), float("-inf")):  # NaN/inf
+            return self.FITNESS_MIN
+        return float(max(self.FITNESS_MIN, min(self.FITNESS_MAX, x)))
 
     def _empty_result(self, genome: StrategyGenome, fitness: float) -> Dict[str, Any]:
         return {
@@ -151,20 +175,59 @@ class GenomeEvaluator:
         )
 
     def _score_result(self, result) -> float:
-        """Score one window for OOS ranking."""
+        """Rank one window. Primary goal = OOS net PnL after fees.
+
+        Secondary: enough trades, controlled drawdown, mild risk adjust.
+        Win rate is intentionally weak (high WR + tiny $ is not the goal).
+        """
         if result.total_trades <= 0:
             return -200.0
 
-        sharpe_score = result.sharpe_ratio * 10
-        win_rate_score = result.win_rate * 20
-        pnl_score = result.total_pnl * 2
-        dd_penalty = result.max_drawdown * 50
-        trade_score = min(result.total_trades / 5.0, 20.0)
+        pnl = float(result.total_pnl or 0.0)
+        trades = int(result.total_trades or 0)
+        dd = float(result.max_drawdown or 0.0)
+        wr = float(result.win_rate or 0.0)
+        # Clamped risk metric from backtest (already in [-5, 5])
+        risk = float(result.sharpe_ratio or 0.0)
+        risk = max(-5.0, min(5.0, risk))
+
         if result.profit_factor == float("inf"):
-            pf_score = 15.0
+            pf = 3.0
         else:
-            pf_score = min(float(result.profit_factor or 0.0), 3.0) * 5.0
-        return sharpe_score + win_rate_score + pnl_score + trade_score + pf_score - dd_penalty
+            pf = max(0.0, min(float(result.profit_factor or 0.0), 3.0))
+
+        # --- Primary: money ---
+        # $1 PnL on $100 book ≈ +1.0 fitness unit (readable scale)
+        pnl_score = pnl * 1.0
+
+        # --- Sample quality ---
+        # Soft bonus up to +15 for getting from 10 → 50+ trades
+        trade_score = min(max(trades - 10, 0) / 40.0, 1.0) * 15.0
+
+        # --- Risk controls ---
+        # DD penalty: 10% DD ≈ -10, 30% DD ≈ -45 (convex)
+        dd_penalty = (dd * 100.0) + max(0.0, dd - 0.15) * 200.0
+        # Mild risk-adjust: at most ±10 from trade-return ratio
+        risk_score = risk * 2.0
+        # Profit factor mild (cap 3): at most +9
+        pf_score = pf * 3.0
+        # Win rate almost cosmetic (at most +5) — prevents WR theater
+        wr_score = wr * 5.0
+
+        # Losing money must rank below making money even if WR/Sharpe look pretty
+        if pnl <= 0:
+            score = pnl_score + 0.25 * trade_score + 0.25 * risk_score - dd_penalty
+        else:
+            score = (
+                pnl_score
+                + trade_score
+                + risk_score
+                + pf_score
+                + wr_score
+                - dd_penalty
+            )
+
+        return self._clamp_fitness(score)
 
     def _compute_fitness(self, result) -> float:
         """Legacy helper for older callers."""

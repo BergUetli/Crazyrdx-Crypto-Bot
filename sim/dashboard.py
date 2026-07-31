@@ -121,7 +121,7 @@ def summarize_window(runs: list[dict]) -> dict:
             "promoted": 0,
             "cycles_with_funnel": 0,
         }
-    fits = [float(r.get("best_fitness") or 0) for r in runs]
+    fits = [sanitize_fitness(r.get("best_fitness") or 0) for r in runs]
     trades = [run_trades(r) for r in runs]
     pnls = [float((r.get("backtest") or {}).get("total_pnl") or 0) for r in runs]
     logics = [run_logic(r) for r in runs]
@@ -159,7 +159,7 @@ def compute_honest_trend(recent: list[dict], prev: list[dict]) -> dict:
     # Secondary: median OOS-selection fitness of N>=30 only
     def med_fit_hard(runs):
         vals = [
-            float(r.get("best_fitness") or 0)
+            sanitize_fitness(r.get("best_fitness") or 0)
             for r in runs
             if run_trades(r) >= MIN_TRADES
         ]
@@ -235,100 +235,78 @@ def _y_of(v: float, mn: float, mx: float, mt: float, ph: float) -> float:
     return mt + ph - (v - mn) / (mx - mn) * ph
 
 
+def sanitize_fitness(v: float) -> float:
+    """Clamp legacy explodey fitness so charts/story stay readable."""
+    try:
+        x = float(v or 0.0)
+    except Exception:
+        return 0.0
+    if x != x or x in (float("inf"), float("-inf")):
+        return 0.0
+    # Old runs wrote 1e17; treat anything beyond sane ranking range as garbage
+    if abs(x) > 1000:
+        return 0.0
+    return x
+
+
 def fitness_chart(vals: list[float], w: int = 720, h: int = 220) -> str:
-    """Easy chart: one score per finished cycle, left=older, right=newer."""
-    if len(vals) < 2:
-        return '<div class="muted">Not enough finished cycles yet to draw a score chart.</div>'
-
-    ordered = sorted(vals)
-    p95 = ordered[int(0.95 * (len(ordered) - 1))]
+    if not vals:
+        return ""
+    clean = [sanitize_fitness(v) for v in vals]
+    # If everything was explodey legacy, show flat zero with note
+    if all(v == 0 for v in clean) and any(abs(float(v or 0)) > 1000 for v in vals):
+        return (
+            f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}">'
+            f'<rect width="{w}" height="{h}" fill="#0b1220"/>'
+            f'<text x="20" y="{h//2}" fill="#fbbf24" font-size="14">'
+            f'Old search scores were broken (1e17 blow-ups). New runs will plot here.</text></svg>'
+        )
+    ordered = sorted(clean)
     p05 = ordered[int(0.05 * (len(ordered) - 1))]
-    clipped = [min(max(v, p05), p95) for v in vals]
+    p95 = ordered[int(0.95 * (len(ordered) - 1))]
+    if p95 <= p05:
+        p95 = p05 + 1.0
+    clipped = [min(max(v, p05), p95) for v in clean]
     mn, mx = min(clipped), max(clipped)
-    if mx == mn:
+    if mx <= mn:
         mx = mn + 1.0
-
     med = statistics.median(clipped)
-    # short moving average for trend eye-guide
     win = max(3, min(7, len(clipped) // 5 or 3))
     ma = []
     for i in range(len(clipped)):
         lo = max(0, i - win + 1)
         ma.append(sum(clipped[lo : i + 1]) / (i - lo + 1))
-
-    ml, mr, mt, mb = 56, 18, 36, 46
+    ml, mr, mt, mb = 48, 16, 28, 36
     pw, ph = w - ml - mr, h - mt - mb
 
     def xy(i, v):
-        x = ml + i * pw / (len(clipped) - 1)
-        y = _y_of(v, mn, mx, mt, ph)
+        x = ml + i * pw / max(len(clipped) - 1, 1)
+        y = mt + (1 - (v - mn) / (mx - mn)) * ph
         return x, y
 
     pts = " ".join(f"{xy(i,v)[0]:.1f},{xy(i,v)[1]:.1f}" for i, v in enumerate(clipped))
     ma_pts = " ".join(f"{xy(i,v)[0]:.1f},{xy(i,v)[1]:.1f}" for i, v in enumerate(ma))
-
-    # Grid + y ticks
-    y_ticks = [mn + i * (mx - mn) / 4 for i in range(5)]
-    grid = []
-    for tv in y_ticks:
-        y = _y_of(tv, mn, mx, mt, ph)
-        grid.append(
-            f'<line x1="{ml}" y1="{y:.1f}" x2="{w-mr}" y2="{y:.1f}" stroke="#1a2332" stroke-width="1"/>'
-        )
-        grid.append(
-            f'<text x="{ml-8}" y="{y+4:.1f}" fill="#8b9bb4" font-size="11" text-anchor="end">{tv:.0f}</text>'
-        )
-
-    # Median line
-    my = _y_of(med, mn, mx, mt, ph)
-    med_line = (
-        f'<line x1="{ml}" y1="{my:.1f}" x2="{w-mr}" y2="{my:.1f}" '
-        f'stroke="#f5a623" stroke-width="1.5" stroke-dasharray="5,3"/>'
-        f'<text x="{w-mr}" y="{my-5:.1f}" fill="#f5a623" font-size="11" text-anchor="end">'
-        f'typical (median) {med:.0f}</text>'
-    )
-
-    # Zero if relevant
-    zero = ""
+    y_med = xy(0, med)[1]
+    # zero line if in range
+    zero_line = ""
     if mn < 0 < mx:
-        zy = _y_of(0, mn, mx, mt, ph)
-        zero = (
-            f'<line x1="{ml}" y1="{zy:.1f}" x2="{w-mr}" y2="{zy:.1f}" '
-            f'stroke="#e85d5d" stroke-width="1" stroke-dasharray="3,3"/>'
-            f'<text x="{ml+4}" y="{zy-4:.1f}" fill="#e85d5d" font-size="10">break-even score</text>'
-        )
-
-    # End dots + labels
-    x0, y0 = xy(0, clipped[0])
-    x1, y1 = xy(len(clipped) - 1, clipped[-1])
-    ends = (
-        f'<circle cx="{x0:.1f}" cy="{y0:.1f}" r="3" fill="#8b9bb4"/>'
-        f'<circle cx="{x1:.1f}" cy="{y1:.1f}" r="3.5" fill="#3ddc97"/>'
-        f'<text x="{x1:.1f}" y="{y1-8:.1f}" fill="#3ddc97" font-size="11" text-anchor="end">'
-        f'latest {clipped[-1]:.0f}</text>'
+        y0 = xy(0, 0.0)[1]
+        zero_line = f'<line x1="{ml}" y1="{y0:.1f}" x2="{w-mr}" y2="{y0:.1f}" stroke="#64748b" stroke-dasharray="4 4" stroke-width="1"/>'
+    x0, y0p = xy(0, clipped[0])
+    x1, y1p = xy(len(clipped) - 1, clipped[-1])
+    return (
+        f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}">'
+        f'<rect width="{w}" height="{h}" fill="#0b1220"/>'
+        f'<text x="{ml}" y="18" fill="#94a3b8" font-size="12">Search score (ranking only, not $). Sane range ~-200..+200</text>'
+        f'{zero_line}'
+        f'<line x1="{ml}" y1="{y_med:.1f}" x2="{w-mr}" y2="{y_med:.1f}" stroke="#334155" stroke-dasharray="3 3"/>'
+        f'<polyline fill="none" stroke="#38bdf8" stroke-width="2" points="{pts}"/>'
+        f'<polyline fill="none" stroke="#a78bfa" stroke-width="1.5" points="{ma_pts}"/>'
+        f'<circle cx="{x0:.1f}" cy="{y0p:.1f}" r="3" fill="#38bdf8"/>'
+        f'<circle cx="{x1:.1f}" cy="{y1p:.1f}" r="3" fill="#38bdf8"/>'
+        f'<text x="{ml}" y="{h-10}" fill="#64748b" font-size="11">older → newer · median {med:.0f} · latest {clipped[-1]:.0f}</text>'
+        f"</svg>"
     )
-
-    # X labels
-    xlabels = (
-        f'<text x="{ml}" y="{h-14}" fill="#8b9bb4" font-size="11">older cycles</text>'
-        f'<text x="{(ml+w-mr)/2:.0f}" y="{h-14}" fill="#8b9bb4" font-size="11" text-anchor="middle">'
-        f'each point = one finished search cycle</text>'
-        f'<text x="{w-mr}" y="{h-14}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>'
-    )
-
-    return f"""
-    <svg viewBox="0 0 {w} {h}" width="100%" height="{h}" style="background:#0f1419;border-radius:8px">
-      <text x="{ml}" y="22" fill="#e7eef7" font-size="14" font-weight="600">Search score over time</text>
-      <text x="{w-mr}" y="22" fill="#8b9bb4" font-size="11" text-anchor="end">higher can mean better ranked, not proven profit</text>
-      {''.join(grid)}
-      {zero}
-      {med_line}
-      <polyline fill="none" stroke="#2a9d6a" stroke-width="2" opacity="0.55" points="{ma_pts}"/>
-      <polyline fill="none" stroke="#3ddc97" stroke-width="2.5" points="{pts}"/>
-      {ends}
-      {xlabels}
-      <text x="{ml}" y="{h-2}" fill="#6b7c94" font-size="10">Green line = each cycle winner score. Dimmer green = short average. Orange dashed = typical level.</text>
-    </svg>"""
 
 
 def trades_chart(vals: list[int], w: int = 720, h: int = 200) -> str:
@@ -459,7 +437,7 @@ def chart_commentary(fit_vals: list[float], trade_vals: list[int], trend: dict) 
     # Last finished context
     if trade_vals:
         last_t = trade_vals[-1]
-        last_f = fit_vals[-1]
+        last_f = sanitize_fitness(fit_vals[-1])
         if last_t < MIN_TRADES:
             overall += f" Latest cycle scored {last_f:.0f} on only {last_t} trades: treat as noise."
         else:
@@ -498,7 +476,7 @@ def collect_status() -> dict:
 
     # Questionable metrics to surface
     questions = []
-    if last_run and run_trades(last_run) < MIN_TRADES and float(last_run.get("best_fitness") or 0) > 500:
+    if last_run and run_trades(last_run) < MIN_TRADES and sanitize_fitness(last_run.get("best_fitness") or 0) > 50:
         questions.append(
             "Last cycle has high fitness but under 30 trades — treat as noise, not a champion."
         )
@@ -582,25 +560,29 @@ def story_summary(s: dict) -> dict:
     if last:
         bt = last.get("backtest") or {}
         trades = int(bt.get("total_trades") or 0)
-        fit = float(last.get("best_fitness") or 0)
+        fit = sanitize_fitness(last.get("best_fitness") or 0)
         promo = last.get("n_promoted")
         logic = (last.get("best_genome") or {}).get("entry_logic", "?")
+        if abs(float(last.get("best_fitness") or 0)) > 1000:
+            score_note = "score was broken (old math); ignore the huge number"
+        else:
+            score_note = f"score {fit:.0f}"
         if trades < MIN_TRADES:
             last_line = (
                 f"Last finished search picked an idea that only made <b>{trades}</b> paper trades. "
-                f"That is too few to trust, even if the score ({fit:.0f}) looks big."
+                f"That is too few to trust ({score_note})."
             )
         elif promo == 0:
             last_line = (
                 f"Last finished search's best idea did <b>{trades}</b> paper trades "
-                f"(type <b>{logic}</b>, score {fit:.0f}), then the strict exam "
+                f"(type <b>{logic}</b>, {score_note}), then the strict exam "
                 f"<b>rejected it</b> / the shortlist stayed empty."
             )
         else:
             last_line = (
                 f"Last finished search found <b>{promo}</b> idea(s) that passed the strict exam. "
                 f"Best idea in that search still made only paper profits on history "
-                f"({trades} trades, score {fit:.0f}, type {logic}). Not live money."
+                f"({trades} trades, {score_note}, type {logic}). Not live money."
             )
     else:
         last_line = "No finished search is saved yet."
@@ -702,7 +684,8 @@ def last_cycle_html(s: dict) -> str:
     bt = r.get("backtest") or {}
     g = r.get("best_genome") or {}
     trades = int(bt.get("total_trades") or 0)
-    fit = float(r.get("best_fitness") or 0)
+    fit = sanitize_fitness(r.get("best_fitness") or 0)
+    raw_fit = float(r.get("best_fitness") or 0)
     pnl = float(bt.get("total_pnl") or 0)
     win = float(bt.get("win_rate") or 0)
     logic = g.get("entry_logic", "?")
@@ -710,6 +693,8 @@ def last_cycle_html(s: dict) -> str:
     gens = r.get("generations_run")
     trade_ok = trades >= MIN_TRADES
     trade_color = "#3ddc97" if trade_ok else "#e85d5d"
+    fit_label = f"{fit:.0f}" if abs(raw_fit) <= 1000 else "broken (old)"
+    fit_note = "ranking only (~-200..+200)" if abs(raw_fit) <= 1000 else "ignore 1e17 legacy scores"
 
     # Funnel outcomes in plain language
     funnel_rows = r.get("funnel") or []
@@ -765,8 +750,8 @@ def last_cycle_html(s: dict) -> str:
       </div>
       <div class="stat">
         <div class="k">Search score (not $)</div>
-        <div class="v">{fit:.0f}</div>
-        <div class="hint">only for ranking ideas while searching</div>
+        <div class="v">{fit_label}</div>
+        <div class="hint">{fit_note}</div>
       </div>
       <div class="stat">
         <div class="k">Paper win rate / P&L</div>
@@ -841,7 +826,7 @@ def champions_html(s: dict) -> str:
 
 def html_page(s: dict) -> str:
     recent = s.get("recent") or []
-    fit_vals = [float(r.get("best_fitness") or 0) for r in recent]
+    fit_vals = [sanitize_fitness(r.get("best_fitness") or 0) for r in recent]
     trade_vals = [run_trades(r) for r in recent]
     fit_chart = fitness_chart(fit_vals)
     trade_chart = trades_chart(trade_vals)
