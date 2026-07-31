@@ -1,6 +1,6 @@
 {
-  "updated_ts": 1785537337.539645,
-  "n": 1158,
+  "updated_ts": 1785537387.236785,
+  "n": 1159,
   "entries": {
     "OR::returns_kurtosis_1d|<=|b4+returns_kurtosis_1d|<=|b4+trend_alignment_all|<|b7": {
       "key": "OR::returns_kurtosis_1d|<=|b4+returns_kurtosis_1d|<=|b4+trend_alignment_all|<|b7",
@@ -40271,6 +40271,29 @@
       "last_reason": "RANDOM banned",
       "last_meta": {
         "genome_id": "gen_0_258703"
+      }
+    },
+    "RANDOM::taker_flow_imbalance|<=|b1": {
+      "key": "RANDOM::taker_flow_imbalance|<=|b1",
+      "strikes": 1,
+      "reasons": {
+        "RANDOM banned": 1
+      },
+      "first_ts": 1785537387.236765,
+      "last_ts": 1785537387.236769,
+      "example_id": "gen_0_977311",
+      "logic": "RANDOM",
+      "conditions": [
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": "<=",
+          "threshold": -0.26541524358913615,
+          "bin": 1
+        }
+      ],
+      "last_reason": "RANDOM banned",
+      "last_meta": {
+        "genome_id": "gen_0_977311"
       }
     }
   }
