@@ -20,6 +20,15 @@ import numpy as np
 
 from evolution.genome import EntryCondition, Filter, ExitRule, StrategyGenome
 from layer1.backtest_engine import BacktestEngine, LatencyModel
+from success_criteria import (
+    FEE_RATE_BASE,
+    FITNESS_MAX as SC_FITNESS_MAX,
+    FITNESS_MIN as SC_FITNESS_MIN,
+    LAB_MIN_TRADES_FULL,
+    LAB_MIN_TRADES_OOS,
+    MEV_COST_BPS,
+    MEV_PROB_SEARCH,
+)
 
 ACTIVITY_FILE = Path(__file__).resolve().parent.parent / "logs" / "live_activity.json"
 
@@ -46,17 +55,17 @@ class GenomeEvaluator:
       Inflated Sharpe, win-rate theater, or any metric that can explode to 1e17.
     """
 
-    MIN_TRADES_FULL = 30
-    MIN_TRADES_OOS = 10
+    MIN_TRADES_FULL = LAB_MIN_TRADES_FULL
+    MIN_TRADES_OOS = LAB_MIN_TRADES_OOS
     # Hard bounds so one bad metric can never dominate selection/display
-    FITNESS_MIN = -250.0
-    FITNESS_MAX = 250.0
+    FITNESS_MIN = SC_FITNESS_MIN
+    FITNESS_MAX = SC_FITNESS_MAX
 
     def __init__(
         self,
         features: List[Dict[str, Any]],
         initial_capital: float = 100.0,
-        fee_rate: float = 0.00022,  # 2.2 bps taker fee (Jupiter measured)
+        fee_rate: float = FEE_RATE_BASE,  # from success_criteria (Jupiter-measured)
         latency_model: Optional[LatencyModel] = None,
     ):
         self.features = features
@@ -64,7 +73,10 @@ class GenomeEvaluator:
         self.fee_rate = fee_rate
         # Search uses deterministic expected MEV drag (not coin-flip noise)
         self.latency_model = latency_model or LatencyModel(
-            base_latency_s=10.0, mev_probability=0.3, stochastic=False
+            base_latency_s=10.0,
+            mev_probability=MEV_PROB_SEARCH,
+            mev_cost_bps=MEV_COST_BPS,
+            stochastic=False,
         )
         self.engine = BacktestEngine(
             initial_capital=initial_capital,

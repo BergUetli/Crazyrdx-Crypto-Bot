@@ -23,13 +23,30 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from success_criteria import (
+    BOOK_USD,
+    LAB_MIN_TRADES_FULL,
+    PAPER_MAX_DRAWDOWN_HARD,
+    PAPER_MIN_DAYS,
+    PAPER_MIN_NET_PNL_USD,
+    PAPER_MIN_TRADES,
+    criteria_public_dict,
+    plain_english_summary,
+    sanitize_search_score,
+)
+
 SIM = Path(__file__).resolve().parent
 LOGS = SIM / "logs"
 EVO = SIM / "evolution"
 PORT = 8765
 
-# Health threshold for trade sample (matches selection min)
-MIN_TRADES = 30
+# Health threshold for trade sample (matches LAB selection min)
+MIN_TRADES = LAB_MIN_TRADES_FULL
+
+
+def sanitize_fitness(v: float) -> float:
+    """Clamp legacy explodey fitness so charts/story stay readable."""
+    return sanitize_search_score(v)
 
 
 def load_json(path: Path):
@@ -233,20 +250,6 @@ def plain_english_trend(direction: str, prev: dict, recent: dict, prev_med, rec_
 
 def _y_of(v: float, mn: float, mx: float, mt: float, ph: float) -> float:
     return mt + ph - (v - mn) / (mx - mn) * ph
-
-
-def sanitize_fitness(v: float) -> float:
-    """Clamp legacy explodey fitness so charts/story stay readable."""
-    try:
-        x = float(v or 0.0)
-    except Exception:
-        return 0.0
-    if x != x or x in (float("inf"), float("-inf")):
-        return 0.0
-    # Old runs wrote 1e17; treat anything beyond sane ranking range as garbage
-    if abs(x) > 1000:
-        return 0.0
-    return x
 
 
 def fitness_chart(vals: list[float], w: int = 720, h: int = 220) -> str:
@@ -972,13 +975,46 @@ def html_page(s: dict) -> str:
   {champions_html(s)}
 
   <div class="card">
+    <h2>What counts as a win on ${BOOK_USD:.0f}?</h2>
+    <p class="lead">
+      Single target: after <b>{PAPER_MIN_DAYS} days</b> paper-live,
+      net <b>≥ +${PAPER_MIN_NET_PNL_USD:.0f}</b>, max drawdown
+      <b>≤ ${BOOK_USD * PAPER_MAX_DRAWDOWN_HARD:.0f}</b>,
+      ≥ <b>{PAPER_MIN_TRADES}</b> trades, fees included.
+    </p>
+    <table>
+      <tr><th>Stage</th><th>Bar</th><th>Means</th></tr>
+      <tr>
+        <td><b>LAB</b></td>
+        <td class="muted">≥{MIN_TRADES} trades, OOS profit, DD ≤ 20%, pass strict exam</td>
+        <td class="muted">Interesting on history. Not money.</td>
+      </tr>
+      <tr>
+        <td><b>PAPER</b></td>
+        <td class="muted">≥{PAPER_MIN_DAYS}d, ≥{PAPER_MIN_TRADES} trades, ≥+${PAPER_MIN_NET_PNL_USD:.0f}, DD≤{int(PAPER_MAX_DRAWDOWN_HARD*100)}%</td>
+        <td class="muted">First real success before any live SOL.</td>
+      </tr>
+      <tr>
+        <td><b>LIVE</b></td>
+        <td class="muted">Start tiny (~$25), kill at 20% DD or 5 loss-days in a row</td>
+        <td class="muted">Only after paper pass. Not unlocked yet.</td>
+      </tr>
+    </table>
+    <div class="note" style="margin-top:10px">
+      <b>Not a win:</b> huge search score, high win-rate with tiny $, fewer than {MIN_TRADES} trades,
+      one funnel pass with no forward paper, or six clones of the same idea.
+    </div>
+    <div class="flow" style="margin-top:10px">{plain_english_summary()}</div>
+  </div>
+
+  <div class="card">
     <h2>Words you'll see</h2>
     <table>
       <tr><td><b>SEARCHING</b></td><td class="muted">The Mac Mini is still inventing and grading strategy ideas.</td></tr>
       <tr><td><b>Paper trades</b></td><td class="muted">Fake trades on historical candles. No real SOL moves.</td></tr>
       <tr><td><b>Search score</b></td><td class="muted">Computer ranking while hunting. Useful for sorting ideas, useless alone for deciding go-live.</td></tr>
       <tr><td><b>Strict exam</b></td><td class="muted">Extra tests (later data, fee stress, chapter tests…). Fail = idea dies, and that family can enter the blocked list.</td></tr>
-      <tr><td><b>Shortlist</b></td><td class="muted">Ideas that passed the exam. Candidates for later paper trading — still not your capital.</td></tr>
+      <tr><td><b>Shortlist</b></td><td class="muted">Ideas that passed the LAB exam. Candidates for later paper trading — still not your capital.</td></tr>
       <tr><td><b>Blocked families</b></td><td class="muted">Known failed idea neighborhoods. The bot tries not to retest them forever.</td></tr>
     </table>
   </div>
@@ -1016,6 +1052,7 @@ class Handler(BaseHTTPRequestHandler):
                     "mode": (s.get("last_run") or {}).get("mode"),
                 },
                 "questions": s["questions"],
+                "success_criteria": criteria_public_dict(),
             }
             body = json.dumps(out, default=str).encode()
             self.send_response(200)

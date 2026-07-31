@@ -60,13 +60,27 @@ python3 sim/dashboard.py --lan
 ```
 *Note: To find your Mac's IP address, run `ipconfig getifaddr en0` in the terminal. Your home WiFi router acts as a firewall, so this dashboard is securely visible to other devices on your home network, but completely hidden from the public internet and your neighbors.*
 
-## 🛡️ The Promotion Gauntlet
-If the GA finds a strategy that scores well, it enters the `PromotionFunnel`. A strategy only hits the `Shortlist` if it passes:
-1. **Feasibility:** No "RANDOM" baselines; must have a solid N-count.
-2. **Locked OOS:** It performs equally well on hold-out data it was not trained on.
-3. **Walk-Forward:** Consistent profitability across sliced chapters of market history.
-4. **Fee Stress:** Must survive execution costs being doubled or quadrupled.
-5. **MEV Stress:** Must remain profitable even if front-run 30% of the time.
+## 🛡️ The Promotion Gauntlet (LAB stage)
+If the GA finds a strategy that scores well, it enters the `PromotionFunnel`. A strategy only hits the **LAB shortlist** if it passes:
+1. **Feasibility:** No "RANDOM" baselines; ≥30 trades; positive PnL; drawdown ≤20% on a $100 book.
+2. **Locked OOS:** Profitable on hold-out data it was not ranked on (OOS ≥ ~50% of IS when IS > 0).
+3. **Walk-Forward:** Consistent profitability across chronological chapters.
+4. **Fee Stress:** Still profitable at 5 bps (and checked at 10 bps).
+5. **MEV Stress:** Expected front-run drag; must not break even only under zero MEV.
+6. **Parameter shake:** ±10% threshold nudges still mostly profitable.
+
+### What counts as a win on $100?
+Encoded in `sim/success_criteria.py` (single source of truth):
+
+| Stage | Bar | Meaning |
+|-------|-----|---------|
+| **LAB** | ≥30 trades, OOS profit, DD ≤20%, pass funnel | Interesting on history. Not money. |
+| **PAPER** | ≥30 days, ≥20 trades, ≥ +$5 net, DD ≤20% | **First real success** before live SOL. |
+| **LIVE** | Start ~$25; kill at 20% DD or 5 loss-days | Only after paper pass. |
+
+**Single target:** after 30 days paper-live, net ≥ +$5, max drawdown ≤ $20, ≥ 20 trades, fees included.
+
+**Not a win:** search score alone, high win-rate with tiny $, N<30, one funnel pass without forward paper, clone spam.
 
 ## ⚠️ Disclaimer
 This code is experimental and intended for research/educational purposes. The financial markets, and crypto DEXs in particular, are extremely volatile. **Never deploy live capital without modifying the execution layer and fully understanding the risks.**

@@ -27,6 +27,11 @@ from evolution.promotion_funnel import (
 )
 from evolution.kill_archive import get_archive, reload_archive
 from layer1.historical_feature_engine_1h import get_historical_features_1h
+from success_criteria import (
+    BOOK_USD,
+    LAB_MIN_TRADES_FULL,
+    plain_english_summary,
+)
 
 SIM = Path(__file__).resolve().parent
 RESULTS = SIM / "evolution" / "population"
@@ -38,9 +43,12 @@ def main():
     features = get_historical_features_1h("SOL/USDC", limit=4000)
     print(f"Loaded {len(features)} 1h features, fields={len(features[0]['features'])}")
     print(
-        "Mode: broad explore | ban RANDOM | min-trades 30 | OOS-rank | "
-        "immigrants 20% | post-cycle funnel | kill archive"
+        f"Mode: broad explore | ban RANDOM | min-trades {LAB_MIN_TRADES_FULL} | "
+        f"OOS-rank | book ${BOOK_USD:.0f} | immigrants 20% | funnel | kill archive"
     )
+    print("Success criteria:")
+    for line in plain_english_summary().splitlines():
+        print(f"  {line}")
     print(f"Prior trials logged: {get_total_trials()}")
 
     # Bootstrap kill archive from historical funnel rejects (once per process)

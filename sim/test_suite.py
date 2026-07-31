@@ -307,6 +307,8 @@ def test_dashboard():
         check("has shortlist section", "Shortlist" in html)
         check("uses paper trades language", "paper trades" in html.lower() or "Paper trades" in html)
         check("has educational flow", "strict exam" in html.lower() or "Strict exam" in html)
+        check("shows success criteria card", "What counts as a win" in html)
+        check("shows paper target dollars", "+$5" in html or "PAPER" in html)
     except Exception as e:
         check("dashboard serves", False, str(e)[:60])
 
@@ -315,8 +317,73 @@ def test_dashboard():
             api = json.loads(resp.read())
         check("api returns JSON", "trend" in api or "process" in api)
         check("api has process status", "process" in api)
+        check("api has success_criteria", "success_criteria" in api)
+        if "success_criteria" in api:
+            sc = api["success_criteria"]
+            check("criteria book is 100", sc.get("book_usd") == 100)
+            check("criteria paper min pnl 5", sc.get("paper", {}).get("min_net_pnl_usd") == 5)
     except Exception as e:
         check("api returns JSON", False, str(e)[:60])
+
+
+# ============================================================================
+# 7b. SUCCESS CRITERIA
+# ============================================================================
+
+def test_success_criteria():
+    section("7b. Success criteria ($100 book)")
+
+    from success_criteria import (
+        BOOK_USD,
+        LAB_MIN_TRADES_FULL,
+        evaluate_lab_backtest,
+        evaluate_live_window,
+        evaluate_paper_window,
+        criteria_public_dict,
+        plain_english_summary,
+        sanitize_search_score,
+    )
+    from evolution.evaluator import GenomeEvaluator
+    from evolution.promotion_funnel import PromotionFunnel
+
+    check("book is $100", BOOK_USD == 100.0)
+    check("lab min trades 30", LAB_MIN_TRADES_FULL == 30)
+    check("sanitize kills 1e17", sanitize_search_score(1e17) == 0.0)
+    check("sanitize keeps 42", sanitize_search_score(42) == 42.0)
+
+    lab_fail = evaluate_lab_backtest(total_trades=5, total_pnl=10.0, max_drawdown=0.05)
+    check("lab fails thin sample", lab_fail.passed is False)
+
+    lab_ok = evaluate_lab_backtest(
+        total_trades=40, total_pnl=8.0, max_drawdown=0.10,
+        oos_trades=15, oos_pnl=3.0, is_pnl=5.0,
+    )
+    check("lab passes healthy sample", lab_ok.passed is True)
+
+    paper_fail = evaluate_paper_window(days=10, total_trades=5, net_pnl_usd=1.0, max_drawdown=0.05)
+    check("paper fails short window", paper_fail.passed is False)
+
+    paper_ok = evaluate_paper_window(
+        days=30, total_trades=25, net_pnl_usd=6.0, max_drawdown=0.12,
+    )
+    check("paper passes +$6 / 30d / 25 trades", paper_ok.passed is True)
+
+    live_kill = evaluate_live_window(days=30, net_pnl_usd=2.0, max_drawdown=0.25, consec_loss_days=0)
+    check("live kills at 25% DD", live_kill.killed is True)
+
+    pub = criteria_public_dict()
+    check("public criteria has stages", all(k in pub for k in ("lab", "paper", "live")))
+    check("plain english non-empty", len(plain_english_summary()) > 40)
+
+    # Wired into evaluator / funnel defaults
+    check("evaluator uses lab min trades", GenomeEvaluator.MIN_TRADES_FULL == LAB_MIN_TRADES_FULL)
+    # Funnel defaults pull from success_criteria (inspect signature defaults)
+    import inspect
+    sig = inspect.signature(PromotionFunnel.__init__)
+    check(
+        "funnel default min trades from criteria",
+        sig.parameters["min_trades_full"].default == LAB_MIN_TRADES_FULL,
+    )
 
 
 # ============================================================================
@@ -358,6 +425,7 @@ def main():
     test_validation()
     test_models()
     test_dashboard()
+    test_success_criteria()
     test_integration()
 
     print("\n" + "=" * 60)

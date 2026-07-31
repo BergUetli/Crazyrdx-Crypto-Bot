@@ -30,6 +30,29 @@ from typing import Any, Dict, List, Optional, Tuple
 from evolution.evaluator import GenomeEvaluator
 from evolution.genome import StrategyGenome
 from layer1.backtest_engine import LatencyModel
+from success_criteria import (
+    BOOK_USD,
+    FEE_RATE_BASE,
+    FEE_RATE_STRESS_HIGH,
+    FEE_RATE_STRESS_MID,
+    LAB_DSR_ALT_OOS_PNL,
+    LAB_DSR_ALT_WF_RATE,
+    LAB_DSR_COLD_START_TRIALS,
+    LAB_DSR_MIN,
+    LAB_MAX_DRAWDOWN,
+    LAB_MAX_DRAWDOWN_FOLD,
+    LAB_MEV_BREAK_EVEN_MIN,
+    LAB_MIN_TRADES_FULL,
+    LAB_MIN_TRADES_OOS,
+    LAB_OOS_PNL_RATIO_MIN,
+    LAB_PERTURB_PROFIT_RATE,
+    LAB_PERTURB_RETENTION,
+    LAB_REQUIRE_POSITIVE_FULL_PNL,
+    LAB_WF_FOLDS,
+    LAB_WF_MAJORITY,
+    MEV_COST_BPS,
+    evaluate_lab_backtest,
+)
 
 SIM_DIR = Path(__file__).resolve().parent.parent
 EVO_DIR = SIM_DIR / "evolution"
@@ -128,13 +151,13 @@ class PromotionFunnel:
     def __init__(
         self,
         features: List[Dict[str, Any]],
-        min_trades_full: int = 30,
-        min_trades_oos: int = 10,
-        oos_pnl_ratio_min: float = 0.5,
-        wf_folds: int = 5,
-        wf_majority: float = 0.6,
+        min_trades_full: int = LAB_MIN_TRADES_FULL,
+        min_trades_oos: int = LAB_MIN_TRADES_OOS,
+        oos_pnl_ratio_min: float = LAB_OOS_PNL_RATIO_MIN,
+        wf_folds: int = LAB_WF_FOLDS,
+        wf_majority: float = LAB_WF_MAJORITY,
         fee_rates: Optional[List[float]] = None,
-        base_fee: float = 0.00022,
+        base_fee: float = FEE_RATE_BASE,
     ):
         self.features = features
         self.min_trades_full = min_trades_full
@@ -142,9 +165,9 @@ class PromotionFunnel:
         self.oos_pnl_ratio_min = oos_pnl_ratio_min
         self.wf_folds = wf_folds
         self.wf_majority = wf_majority
-        self.fee_rates = fee_rates or [0.00022, 0.0005, 0.0010]
+        self.fee_rates = fee_rates or [FEE_RATE_BASE, FEE_RATE_STRESS_MID, FEE_RATE_STRESS_HIGH]
         self.base_fee = base_fee
-        self.eval = GenomeEvaluator(features, fee_rate=base_fee)
+        self.eval = GenomeEvaluator(features, fee_rate=base_fee, initial_capital=BOOK_USD)
 
     def _raw(
         self,
@@ -191,14 +214,26 @@ class PromotionFunnel:
         if genome.entry_logic == "RANDOM":
             return self._fail(name, genome, {"lottery_ban": {"passed": False}}, "RANDOM banned")
 
-        # Gate 1: full sample feasibility
+        # Gate 1: full sample feasibility (LAB bars from success_criteria)
         full = self._raw(genome)
         full_d = _result_dict(full)
-        feas_pass = full.total_trades >= self.min_trades_full and full.total_pnl > 0
+        lab_pre = evaluate_lab_backtest(
+            total_trades=full.total_trades,
+            total_pnl=full.total_pnl,
+            max_drawdown=float(full.max_drawdown or 0.0),
+        )
+        feas_pass = (
+            full.total_trades >= self.min_trades_full
+            and (full.total_pnl > 0 if LAB_REQUIRE_POSITIVE_FULL_PNL else True)
+            and float(full.max_drawdown or 0.0) <= LAB_MAX_DRAWDOWN
+        )
         gates["feasibility"] = {
             "passed": feas_pass,
             **full_d,
             "min_trades": self.min_trades_full,
+            "max_drawdown_cap": LAB_MAX_DRAWDOWN,
+            "lab_precheck": lab_pre.to_dict(),
+            "book_usd": BOOK_USD,
         }
         if not feas_pass:
             return self._fail(name, genome, gates, "feasibility")
@@ -250,7 +285,7 @@ class PromotionFunnel:
             r = self._raw(genome, chunk)
             ok = r.total_pnl > 0 and r.total_trades >= max(5, self.min_trades_oos // 2)
             # Catastrophic DD veto on fold
-            if r.max_drawdown is not None and r.max_drawdown > 0.35:
+            if r.max_drawdown is not None and r.max_drawdown > LAB_MAX_DRAWDOWN_FOLD:
                 ok = False
             fold_rows.append(
                 {
@@ -282,7 +317,7 @@ class PromotionFunnel:
             row = {"fee_rate": fee, "fee_bps": fee * 1e4, **_result_dict(r)}
             row["passed"] = r.total_pnl > 0 and r.total_trades >= self.min_trades_full // 2
             fee_rows.append(row)
-            if fee >= 0.0005 and not row["passed"]:
+            if fee >= FEE_RATE_STRESS_MID and not row["passed"]:
                 fee_pass = False
         gates["fee_stress"] = {"passed": fee_pass, "rows": fee_rows}
         if not fee_pass:
@@ -300,11 +335,13 @@ class PromotionFunnel:
         profit_rate = sum(1 for p in perturbed if p > 0) / max(len(perturbed), 1)
         avg_p = sum(perturbed) / max(len(perturbed), 1)
         retention = avg_p / orig_pnl if orig_pnl != 0 else 0.0
-        pp_pass = profit_rate >= 0.6 and retention >= 0.4
+        pp_pass = profit_rate >= LAB_PERTURB_PROFIT_RATE and retention >= LAB_PERTURB_RETENTION
         gates["perturbation"] = {
             "passed": pp_pass,
             "profitability_rate": profit_rate,
             "retention": retention,
+            "min_profit_rate": LAB_PERTURB_PROFIT_RATE,
+            "min_retention": LAB_PERTURB_RETENTION,
             "perturbed_pnls": perturbed,
         }
         if not pp_pass:
@@ -318,17 +355,19 @@ class PromotionFunnel:
                 base_latency_s=10.0,
                 latency_std_s=3.0,
                 mev_probability=mp,
-                mev_cost_bps=15.0,
+                mev_cost_bps=MEV_COST_BPS,
+                stochastic=False,
             )
             r = self._raw(genome, latency=lat)
             row = {"mev_probability": mp, **_result_dict(r)}
             mev_rows.append(row)
             if break_even is None and r.total_pnl <= 0:
                 break_even = mp
-        mev_pass = break_even is None or break_even > 0.2
+        mev_pass = break_even is None or break_even > LAB_MEV_BREAK_EVEN_MIN
         gates["mev"] = {
             "passed": mev_pass,
             "break_even_mev": break_even,
+            "min_break_even": LAB_MEV_BREAK_EVEN_MIN,
             "rows": mev_rows,
         }
         if not mev_pass:
@@ -344,9 +383,13 @@ class PromotionFunnel:
         wf_rate = float(gates.get("walk_forward", {}).get("pass_rate", 0.0) or 0.0)
         # Pass if DSR ok, or cold-start, or strong money+WF evidence
         dsr_pass = (
-            dsr >= 0.5
-            or n_trials < 200
-            or (oos_pnl >= 5.0 and wf_rate >= 0.8 and full.total_pnl > 0)
+            dsr >= LAB_DSR_MIN
+            or n_trials < LAB_DSR_COLD_START_TRIALS
+            or (
+                oos_pnl >= LAB_DSR_ALT_OOS_PNL
+                and wf_rate >= LAB_DSR_ALT_WF_RATE
+                and full.total_pnl > 0
+            )
         )
         gates["dsr"] = {
             "passed": dsr_pass,
@@ -354,7 +397,10 @@ class PromotionFunnel:
             "sharpe": full.sharpe_ratio,
             "n_obs_trades": n_obs,
             "n_trials": n_trials,
-            "alt_pass_strong_oos": bool(oos_pnl >= 5.0 and wf_rate >= 0.8),
+            "min_dsr": LAB_DSR_MIN,
+            "alt_pass_strong_oos": bool(
+                oos_pnl >= LAB_DSR_ALT_OOS_PNL and wf_rate >= LAB_DSR_ALT_WF_RATE
+            ),
         }
         if not dsr_pass:
             return self._fail(name, genome, gates, "dsr")
@@ -578,7 +624,7 @@ def funnel_population_top(
     features: List[Dict[str, Any]],
     population: List[StrategyGenome],
     top_k: int = 5,
-    min_trades: int = 30,
+    min_trades: int = LAB_MIN_TRADES_FULL,
     n_trials_context: Optional[int] = None,
     verbose: bool = True,
 ) -> List[Dict[str, Any]]:
