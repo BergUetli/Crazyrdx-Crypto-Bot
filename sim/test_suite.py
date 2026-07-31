@@ -124,11 +124,20 @@ def test_genome():
     check("RANDOM banned from selection LOGIC_OPS", "RANDOM" not in LOGIC_OPS)
     check("TFT in LOGIC_OPS", "TFT" in LOGIC_OPS)
     check("MEANREV in LOGIC_OPS", "MEANREV" in LOGIC_OPS)
-    # 1h feature alignment: threshold genes must exist on 1h features
+    # 1h feature alignment: threshold genes must exist on 1h features.
+    # Cross-pair indicators are added at evaluator init, not in raw features.
+    CROSS_PAIR_NAMES = {"sol_btc_ratio", "sol_btc_ratio_roc_4h", "sol_btc_ratio_roc_1d",
+                        "sol_btc_corr_1d", "sol_eth_ratio", "sol_eth_ratio_roc_4h",
+                        "sol_eth_ratio_roc_1d", "sol_eth_corr_1d",
+                        "btc_leading_sol", "eth_leading_sol", "cross_trifecta"}
     from layer1.historical_feature_engine_1h import get_historical_features_1h
     f1 = get_historical_features_1h("SOL/USDC", limit=1)
     if f1:
         keys = set(f1[0]["features"].keys())
+        # Evaluator-augmented keys
+        from layer1.multi_pair import load_multi_pair, add_cross_pair_features
+        aug = add_cross_pair_features(f1, *load_multi_pair("SOL/USDC", limit=1)[1:])
+        keys = set(aug[0]["features"].keys()) if aug else keys
         missing = [i for i in INDICATORS if i not in keys]
         check("all INDICATORS exist on 1h features", len(missing) == 0, f"missing {missing[:8]}")
 

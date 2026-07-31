@@ -43,6 +43,10 @@ INDICATORS = [
     "cex_dex_basis_bps", "cex_dex_basis_roc_4h", "cex_dex_basis_roc_1d", "cex_dex_basis_extreme",
     "taker_flow_imbalance", "taker_flow_imbalance_4h", "taker_flow_imbalance_roc", "taker_flow_persistence",
     "dex_liquidity_ratio", "funding_basis_divergence", "market_stress_index",
+    # Cross-pair features (SOL/BTC, SOL/ETH ratios etc.)
+    "sol_btc_ratio", "sol_btc_ratio_roc_4h", "sol_btc_ratio_roc_1d", "sol_btc_corr_1d",
+    "btc_leading_sol", "eth_leading_sol", "cross_trifecta",
+    "sol_eth_ratio", "sol_eth_ratio_roc_4h", "sol_eth_ratio_roc_1d", "sol_eth_corr_1d",
 ]
 
 # Threshold ranges per indicator type
@@ -81,6 +85,15 @@ THRESHOLD_RANGES = {
     "dex_liquidity_ratio": (0.1, 10.0),
     "funding_basis_divergence": (0.0, 1.0),
     "market_stress_index": (0.0, 0.5),
+    "sol_btc_ratio": (0.0, 0.00001),
+    "sol_btc_ratio_roc": (-100.0, 100.0),
+    "sol_btc_corr": (-1.0, 1.0),
+    "btc_leading": (-1.0, 1.0),
+    "eth_leading": (-1.0, 1.0),
+    "sol_eth_ratio": (0.0, 0.1),
+    "sol_eth_ratio_roc": (-100.0, 100.0),
+    "sol_eth_corr": (-1.0, 1.0),
+    "cross_trifecta": (-1.0, 1.0),
 }
 
 # Categorical options

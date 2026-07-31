@@ -20,6 +20,7 @@ import numpy as np
 
 from evolution.genome import EntryCondition, Filter, ExitRule, StrategyGenome
 from layer1.backtest_engine import BacktestEngine, LatencyModel
+from layer1.multi_pair import add_cross_pair_features, load_multi_pair
 from success_criteria import (
     FEE_RATE_BASE,
     FITNESS_MAX as SC_FITNESS_MAX,
@@ -51,6 +52,9 @@ class GenomeEvaluator:
       Fitness is a ranking score in roughly [-200, +200], NOT dollars and NOT
       annualized Sharpe.
 
+    Features are augmented with cross-pair data (SOL/BTC, SOL/ETH ratios,
+    correlations, leading indicators) for free (no API cost).
+
     Not the goal:
       Inflated Sharpe, win-rate theater, or any metric that can explode to 1e17.
     """
@@ -69,6 +73,13 @@ class GenomeEvaluator:
         latency_model: Optional[LatencyModel] = None,
     ):
         self.features = features
+        # Augment with cross-pair features if btc/eth data available
+        try:
+            _, btc_feats, eth_feats = load_multi_pair("SOL/USDC", limit=len(features))
+            if btc_feats is not None and eth_feats is not None:
+                self.features = add_cross_pair_features(features, btc_feats, eth_feats)
+        except Exception:
+            pass  # multi-pair unavailable; use single-pair features
         self.initial_capital = initial_capital
         self.fee_rate = fee_rate
         # Search uses deterministic expected MEV drag (not coin-flip noise)
@@ -214,7 +225,12 @@ class GenomeEvaluator:
 
         # --- Sample quality ---
         # Soft bonus up to +15 for getting from 10 → 50+ trades
+        # Saturation penalty: trading >50% of bars = degenerate, not skill
         trade_score = min(max(trades - 10, 0) / 40.0, 1.0) * 15.0
+        # Heavy penalty if trades exceed 50% of available bars (≈2000 on 4000 bars)
+        if trades > 500:
+            trade_saturation = min((trades - 500) / 500.0, 3.0) * 10.0
+            trade_score -= trade_saturation
 
         # --- Risk controls ---
         # DD penalty: 10% DD ≈ -10, 30% DD ≈ -45 (convex)

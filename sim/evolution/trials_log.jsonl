@@ -465,3 +465,69 @@
 {"ts": 1785532111.522488, "n_trials": 3, "meta": {"test": true}}
 {"ts": 1785532115.7838469, "n_trials": 10650, "meta": {"cycle": 37, "generations": 70, "pop": 150, "best_fitness": 2.6200348070727133e+17, "best_id": "clone_cross_clone_cl_cross_cl_4243_9034"}}
 {"ts": 1785532152.966217, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785532209.3482292, "n_trials": 7050, "meta": {"cycle": 1, "generations": 46, "pop": 150, "best_fitness": 163.6258890314515, "best_id": "cross_mut_cros_mut_mut__8315"}}
+{"ts": 1785532290.221608, "n_trials": 7800, "meta": {"cycle": 2, "generations": 51, "pop": 150, "best_fitness": 125.07962465614263, "best_id": "mut_mut_cross_clone_cr_clone_cr_3554_9746_1689"}}
+{"ts": 1785532367.332161, "n_trials": 8850, "meta": {"cycle": 3, "generations": 58, "pop": 150, "best_fitness": 122.68878475830832, "best_id": "mut_cross_clone_cl_clone_cr_1511_5616"}}
+{"ts": 1785532416.2355871, "n_trials": 4650, "meta": {"cycle": 4, "generations": 30, "pop": 150, "best_fitness": 104.97078384663062, "best_id": "mut_cross_cross_cr_clone_mu_1751_4011"}}
+{"ts": 1785532465.957062, "n_trials": 5400, "meta": {"cycle": 5, "generations": 35, "pop": 150, "best_fitness": 124.91451906997945, "best_id": "cross_cross_ge_cross_ge_4105"}}
+{"ts": 1785532562.595925, "n_trials": 9750, "meta": {"cycle": 6, "generations": 64, "pop": 150, "best_fitness": 172.86419848448426, "best_id": "mut_cross_clone_cr_mut_cros_6415_3153"}}
+{"ts": 1785532629.184438, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785532636.375206, "n_trials": 7200, "meta": {"cycle": 7, "generations": 47, "pop": 150, "best_fitness": 151.4562960120003, "best_id": "mut_cross_cross_cl_clone_mu_3105_3271"}}
+{"ts": 1785532681.8858938, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785532758.874017, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785532839.31314, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785532873.323425, "n_trials": 8550, "meta": {"cycle": 1, "generations": 56, "pop": 150, "best_fitness": 114.3095080146799, "best_id": "cross_cross_cl_clone_cr_3278"}}
+{"ts": 1785532946.787929, "n_trials": 8700, "meta": {"cycle": 2, "generations": 57, "pop": 150, "best_fitness": 177.07781334325847, "best_id": "mut_clone_clone_clone_cross_mut_clon_cross_cr_6994_7538_9048_8092_5227"}}
+{"ts": 1785533042.481351, "n_trials": 10650, "meta": {"cycle": 3, "generations": 70, "pop": 150, "best_fitness": 122.73017733388457, "best_id": "mut_clone_clone_clone_clone_mut_cross_mut_clon_cross_cr_5235_7218_3243_3791_8873_6917_2882"}}
+{"ts": 1785533091.558815, "n_trials": 4950, "meta": {"cycle": 4, "generations": 32, "pop": 150, "best_fitness": 153.4600601214081, "best_id": "mut_cross_cross_cl_cross_cl_3580_7736"}}
+{"ts": 1785533126.3993542, "n_trials": 3600, "meta": {"cycle": 5, "generations": 23, "pop": 150, "best_fitness": 75.4093340224048, "best_id": "cross_cross_cl_mut_clon_7634"}}
+{"ts": 1785533188.64502, "n_trials": 6450, "meta": {"cycle": 6, "generations": 42, "pop": 150, "best_fitness": 143.15910603885845, "best_id": "mut_cross_mut_mut__cross_cl_5906_6649"}}
+{"ts": 1785533238.700924, "n_trials": 5100, "meta": {"cycle": 7, "generations": 33, "pop": 150, "best_fitness": 129.9291981322592, "best_id": "cross_clone_cr_mut_cros_8313"}}
+{"ts": 1785533323.5479171, "n_trials": 9000, "meta": {"cycle": 8, "generations": 59, "pop": 150, "best_fitness": 111.22736899116627, "best_id": "mut_clone_clone_clone_mut_clone_cross_mut_cros_cross_cl_3003_2720_7947_6323_8781_7329_7577"}}
+{"ts": 1785533387.760788, "n_trials": 7350, "meta": {"cycle": 9, "generations": 48, "pop": 150, "best_fitness": 144.4615227306545, "best_id": "cross_clone_cl_mut_cros_9865"}}
+{"ts": 1785533491.403906, "n_trials": 12900, "meta": {"cycle": 10, "generations": 85, "pop": 150, "best_fitness": 146.95517047778023, "best_id": "mut_cross_clone_cl_clone_cl_5741_7619"}}
+{"ts": 1785533525.1673942, "n_trials": 3300, "meta": {"cycle": 11, "generations": 21, "pop": 150, "best_fitness": 108.20938119589299, "best_id": "mut_cross_cross_mu_cross_mu_9475_8285"}}
+{"ts": 1785533569.5583382, "n_trials": 5400, "meta": {"cycle": 12, "generations": 35, "pop": 150, "best_fitness": 76.19237423257124, "best_id": "mut_clone_clone_mut_clone_clone_clone_clone_mut_clone_cross_cross_cl_clone_cr_4829_9899_8657_5734_4352_8417_6732_2951_3435_8698_1019"}}
+{"ts": 1785533608.842548, "n_trials": 4050, "meta": {"cycle": 13, "generations": 26, "pop": 150, "best_fitness": 133.93052203263483, "best_id": "mut_cross_mut_cros_clone_cl_9026_6892"}}
+{"ts": 1785533671.832632, "n_trials": 6600, "meta": {"cycle": 14, "generations": 43, "pop": 150, "best_fitness": 138.38288638061894, "best_id": "mut_clone_clone_clone_cross_cross_cl_mut_clon_1493_5497_5262_9141_6713"}}
+{"ts": 1785533740.957532, "n_trials": 9900, "meta": {"cycle": 15, "generations": 65, "pop": 150, "best_fitness": 138.5109688440769, "best_id": "cross_clone_cr_clone_mu_9526"}}
+{"ts": 1785533783.9880362, "n_trials": 4650, "meta": {"cycle": 16, "generations": 30, "pop": 150, "best_fitness": 129.79224647162806, "best_id": "mut_clone_clone_cross_cross_mu_clone_mu_1737_4358_8520_1897"}}
+{"ts": 1785533814.636575, "n_trials": 3000, "meta": {"cycle": 17, "generations": 19, "pop": 150, "best_fitness": 109.34433273179305, "best_id": "mut_cross_clone_cr_cross_ge_5024_5379"}}
+{"ts": 1785533868.04065, "n_trials": 5250, "meta": {"cycle": 18, "generations": 34, "pop": 150, "best_fitness": 124.65270500916164, "best_id": "cross_cross_cl_cross_cl_2455"}}
+{"ts": 1785533911.9006138, "n_trials": 4500, "meta": {"cycle": 19, "generations": 29, "pop": 150, "best_fitness": 124.4050823009786, "best_id": "mut_cross_cross_cr_clone_cl_2346_2235"}}
+{"ts": 1785533949.885689, "n_trials": 3750, "meta": {"cycle": 20, "generations": 24, "pop": 150, "best_fitness": 107.3124759592188, "best_id": "cross_clone_cl_clone_mu_8424"}}
+{"ts": 1785533990.91846, "n_trials": 4350, "meta": {"cycle": 21, "generations": 28, "pop": 150, "best_fitness": 125.7203545854289, "best_id": "mut_cross_clone_mu_clone_mu_2813_8778"}}
+{"ts": 1785534080.593154, "n_trials": 9900, "meta": {"cycle": 22, "generations": 65, "pop": 150, "best_fitness": 129.48458572090155, "best_id": "cross_cross_cr_clone_cr_2977"}}
+{"ts": 1785534906.145785, "n_trials": 5850, "meta": {"cycle": 23, "generations": 38, "pop": 150, "best_fitness": 91.12234032647176, "best_id": "cross_clone_cl_clone_mu_4590"}}
+{"ts": 1785534942.4967282, "n_trials": 4200, "meta": {"cycle": 24, "generations": 27, "pop": 150, "best_fitness": 84.06507212714826, "best_id": "cross_cross_cr_cross_cl_5754"}}
+{"ts": 1785535008.93403, "n_trials": 6900, "meta": {"cycle": 25, "generations": 45, "pop": 150, "best_fitness": 139.38745462269898, "best_id": "mut_cross_cross_cl_cross_cl_6236_2963"}}
+{"ts": 1785535044.3124962, "n_trials": 3600, "meta": {"cycle": 26, "generations": 23, "pop": 150, "best_fitness": 108.57121571049824, "best_id": "cross_mut_cros_cross_cl_2847"}}
+{"ts": 1785535107.5585458, "n_trials": 7200, "meta": {"cycle": 27, "generations": 47, "pop": 150, "best_fitness": 109.39030679721981, "best_id": "cross_cross_mu_mut_clon_4625"}}
+{"ts": 1785535193.7835672, "n_trials": 9150, "meta": {"cycle": 28, "generations": 60, "pop": 150, "best_fitness": 148.89671512959467, "best_id": "mut_cross_cross_cl_clone_cl_8672_9728"}}
+{"ts": 1785535238.324723, "n_trials": 5100, "meta": {"cycle": 29, "generations": 33, "pop": 150, "best_fitness": 92.4643045748011, "best_id": "mut_clone_mut_cross_clone_cr_cross_cr_2670_2641_1205_9041"}}
+{"ts": 1785535315.594111, "n_trials": 8100, "meta": {"cycle": 30, "generations": 53, "pop": 150, "best_fitness": 133.78232101897663, "best_id": "mut_clone_mut_mut_clone_clone_cross_clone_mu_cross_cl_5724_2349_4289_7555_9662_7450_9161"}}
+{"ts": 1785535344.2026172, "n_trials": 2850, "meta": {"cycle": 31, "generations": 18, "pop": 150, "best_fitness": 130.40554055222086, "best_id": "mut_cross_mut_clon_mut_cros_2499_1643"}}
+{"ts": 1785535404.932668, "n_trials": 6300, "meta": {"cycle": 32, "generations": 41, "pop": 150, "best_fitness": 132.7638631806274, "best_id": "cross_cross_cl_cross_mu_2169"}}
+{"ts": 1785535492.531542, "n_trials": 9750, "meta": {"cycle": 33, "generations": 64, "pop": 150, "best_fitness": 176.12137913926068, "best_id": "mut_clone_cross_cross_cr_mut_cros_6939_6527_8398"}}
+{"ts": 1785535543.701994, "n_trials": 5400, "meta": {"cycle": 34, "generations": 35, "pop": 150, "best_fitness": 105.82371341373975, "best_id": "mut_clone_clone_cross_mut_cros_cross_cr_5201_9893_9622_6779"}}
+{"ts": 1785535610.462556, "n_trials": 7650, "meta": {"cycle": 35, "generations": 50, "pop": 150, "best_fitness": 178.5280712318423, "best_id": "mut_clone_clone_cross_clone_mu_clone_cl_5560_6313_4139_3585"}}
+{"ts": 1785535668.559613, "n_trials": 6450, "meta": {"cycle": 36, "generations": 42, "pop": 150, "best_fitness": 201.01698349933417, "best_id": "mut_clone_clone_cross_clone_cr_clone_cl_5938_2761_6273_5923"}}
+{"ts": 1785535701.373376, "n_trials": 3600, "meta": {"cycle": 37, "generations": 23, "pop": 150, "best_fitness": 129.48397816425, "best_id": "cross_clone_ge_cross_cr_3100"}}
+{"ts": 1785535775.3096929, "n_trials": 8400, "meta": {"cycle": 38, "generations": 55, "pop": 150, "best_fitness": 177.27344557611391, "best_id": "cross_cross_mu_mut_cros_2172"}}
+{"ts": 1785535824.1688352, "n_trials": 5700, "meta": {"cycle": 39, "generations": 37, "pop": 150, "best_fitness": 129.3022127207556, "best_id": "mut_clone_cross_clone_cl_cross_cl_5470_8126_9704"}}
+{"ts": 1785535861.832033, "n_trials": 4350, "meta": {"cycle": 40, "generations": 28, "pop": 150, "best_fitness": 105.29924958572029, "best_id": "cross_clone_mu_clone_cl_1240"}}
+{"ts": 1785535895.2316759, "n_trials": 3450, "meta": {"cycle": 41, "generations": 22, "pop": 150, "best_fitness": 134.12434494547628, "best_id": "mut_mut_cross_mut_cros_clone_mu_3676_6778_7846"}}
+{"ts": 1785535926.685143, "n_trials": 3300, "meta": {"cycle": 42, "generations": 21, "pop": 150, "best_fitness": 92.94006300400937, "best_id": "cross_mut_cros_clone_mu_1386"}}
+{"ts": 1785535972.082169, "n_trials": 4950, "meta": {"cycle": 43, "generations": 32, "pop": 150, "best_fitness": 128.4474208280808, "best_id": "mut_cross_clone_cl_mut_cros_1713_8472"}}
+{"ts": 1785536064.929043, "n_trials": 7350, "meta": {"cycle": 44, "generations": 48, "pop": 150, "best_fitness": 182.59643714133128, "best_id": "cross_clone_cl_clone_cl_4476"}}
+{"ts": 1785536095.141419, "n_trials": 3150, "meta": {"cycle": 45, "generations": 20, "pop": 150, "best_fitness": 121.28438967935413, "best_id": "mut_mut_cross_clone_cr_clone_cr_7639_4077_2164"}}
+{"ts": 1785536605.5532439, "n_trials": 15450, "meta": {"cycle": 46, "generations": 102, "pop": 150, "best_fitness": 184.63916640311444, "best_id": "mut_clone_clone_clone_cross_mut_clon_clone_mu_5947_2143_3172_3162_1258"}}
+{"ts": 1785536668.3231392, "n_trials": 6300, "meta": {"cycle": 47, "generations": 41, "pop": 150, "best_fitness": 125.9991230822255, "best_id": "mut_cross_clone_cr_clone_cl_9086_1507"}}
+{"ts": 1785536763.04601, "n_trials": 9300, "meta": {"cycle": 48, "generations": 61, "pop": 150, "best_fitness": 130.8420298606647, "best_id": "mut_mut_mut_cross_clone_cl_clone_cr_7441_8762_9204_9389"}}
+{"ts": 1785536813.914329, "n_trials": 4800, "meta": {"cycle": 49, "generations": 31, "pop": 150, "best_fitness": 153.3754481614838, "best_id": "cross_clone_cl_mut_cros_1984"}}
+{"ts": 1785536933.2787032, "n_trials": 10800, "meta": {"cycle": 50, "generations": 71, "pop": 150, "best_fitness": 146.42630125141477, "best_id": "mut_clone_cross_cross_cr_clone_mu_9009_3145_8621"}}
+{"ts": 1785536979.706788, "n_trials": 4200, "meta": {"cycle": 51, "generations": 27, "pop": 150, "best_fitness": 122.38587155016421, "best_id": "mut_cross_clone_cl_cross_cr_5063_7472"}}
+{"ts": 1785537021.9515789, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785537260.1271691, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785537270.421479, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785537297.225056, "n_trials": 3, "meta": {"test": true}}

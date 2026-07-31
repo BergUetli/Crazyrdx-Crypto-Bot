@@ -213,6 +213,9 @@ class BacktestEngine:
     """
     Walk-forward backtesting engine with latency modeling.
     """
+    # Prevent degenerate "trade every bar" strategies
+    COOLDOWN_BARS = 4   # must skip at least N bars after an exit before re-entering
+    MIN_HOLD_BARS = 2    # minimum hold: exit cannot fire on entry bar or next bar
 
     def __init__(
         self,
@@ -260,9 +263,20 @@ class BacktestEngine:
         equity_curve = [capital]
         bar_hours = self._infer_bar_hours(features, start_idx, end_idx)
         rules = self._normalize_exit_rules(exit_rules, bar_hours=bar_hours)
+        cooldown_until = -1
+
+        # Vol-targeted position sizing: scale inverse to recent volatility.
+        # Uses a rolling 20-bar vol window if available; otherwise fixed fraction.
+        _vol_window: List[float] = []
+        _vol_target = 0.15  # target 15% annualised position vol (modest for $100)
+        _vol_min_size = 0.05  # floor: always at least 5% of capital
 
         i = start_idx
         while i < end_idx - 1:
+            if i <= cooldown_until:
+                i += 1
+                continue
+
             signal = signal_generator(features, i)
 
             if signal is None:
@@ -275,7 +289,24 @@ class BacktestEngine:
                 i += 1
                 continue
 
-            # Position sizing
+            # Vol-targeted sizing
+            current = features[i]
+            entry_price = current["features"]["close"]
+            fv = current["features"]
+
+            # Update rolling vol (20-bar)
+            if "volatility_1d" in fv:
+                _vol_window.append(float(fv["volatility_1d"]) / 10000.0)
+            else:
+                _vol_window.append(0.02)
+            if len(_vol_window) > 20:
+                _vol_window.pop(0)
+            recent_vol = max(float(np.mean(_vol_window)) if _vol_window else 0.02, 0.005)
+
+            # Size inverse to vol: size = capital * (target / realized_vol)
+            vol_scale = min(_vol_target / max(recent_vol, 1e-6), 1.0) if recent_vol > 0 else 1.0
+            size_fraction = max(_vol_min_size, size_fraction * vol_scale)
+
             size_usd = capital * min(size_fraction, self.max_position_size)
             if size_usd < 1.0:  # minimum $1 trade
                 i += 1
@@ -340,6 +371,9 @@ class BacktestEngine:
 
             capital += net_pnl
             equity_curve.append(capital)
+
+            # Apply cooldown so next trade is at least COOLDOWN_BARS after exit
+            cooldown_until = exit_idx + self.COOLDOWN_BARS
 
             # Move to next opportunity (skip ahead to avoid overlapping trades)
             i = exit_idx + 1
@@ -480,10 +514,12 @@ class BacktestEngine:
                 # Clamp to sane % band
                 v = abs(val)
                 if v > 0.25:
-                    # maybe bps or percent points entered wrong; try /100
                     if v > 1:
                         v = v / 100.0
                 v = float(min(max(v, 0.001), 0.25))
+                # Trailing stop must be ≥ 0.4% so it cannot degenerate to "exit next bar"
+                if et == "trailing_stop":
+                    v = max(v, 0.004)
                 rules.append({"type": et, "value": v})
             elif et == "signal_reversal":
                 rules.append({"type": "signal_reversal", "value": float(val or 0.5)})
@@ -509,8 +545,8 @@ class BacktestEngine:
         bar_hours: float = 1.0,
     ) -> Tuple[int, float]:
         """Walk forward bar-by-bar until an exit rule fires."""
-        # Start checking from next bar after entry path settles
-        start = min(entry_idx + 1, end_idx - 1)
+        # Minimum hold: exit search starts at entry_idx + MIN_HOLD_BARS
+        start = min(entry_idx + max(1, self.MIN_HOLD_BARS), end_idx - 1)
         last = end_idx - 1
         if start > last:
             return last, features[last]["features"]["close"]
