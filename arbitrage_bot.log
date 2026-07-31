@@ -1,0 +1,25 @@
+2026-07-29 01:09:15,694 - __main__ - INFO - Bot initialized for wallet: 8312uUi1DfdNDeSLMCdEhGNrMCQkSdFTMHw9oNmHzTXe
+2026-07-29 01:09:15,694 - __main__ - INFO - Min spread: 0.5%, Max trade: 0.01 SOL
+2026-07-29 01:09:15,694 - __main__ - INFO - Starting arbitrage bot...
+2026-07-29 01:09:15,735 - __main__ - INFO - Connected to Solana RPC: https://api.mainnet-beta.solana.com
+2026-07-29 01:09:15,735 - __main__ - INFO - Starting monitoring cycle...
+2026-07-29 01:09:15,769 - __main__ - ERROR - Error getting Jupiter quote: [Errno 8] nodename nor servname provided, or not known
+2026-07-29 01:09:15,770 - __main__ - WARNING - Could not get quotes from multiple DEXs
+2026-07-29 01:09:15,770 - __main__ - INFO - No opportunities found this cycle
+2026-07-29 01:09:15,770 - __main__ - INFO - Total P&L: 0.0000 USDC
+2026-07-29 01:09:15,770 - __main__ - INFO - Total fees: 0.0000 USDC
+2026-07-29 01:09:15,770 - __main__ - INFO - Sleeping for 10 seconds...
+2026-07-29 01:09:25,772 - __main__ - INFO - Starting monitoring cycle...
+2026-07-29 01:09:25,792 - __main__ - ERROR - Error getting Jupiter quote: [Errno 8] nodename nor servname provided, or not known
+2026-07-29 01:09:25,793 - __main__ - WARNING - Could not get quotes from multiple DEXs
+2026-07-29 01:09:25,793 - __main__ - INFO - No opportunities found this cycle
+2026-07-29 01:09:25,793 - __main__ - INFO - Total P&L: 0.0000 USDC
+2026-07-29 01:09:25,793 - __main__ - INFO - Total fees: 0.0000 USDC
+2026-07-29 01:09:25,793 - __main__ - INFO - Sleeping for 10 seconds...
+2026-07-29 01:09:35,795 - __main__ - INFO - Starting monitoring cycle...
+2026-07-29 01:09:35,806 - __main__ - ERROR - Error getting Jupiter quote: [Errno 8] nodename nor servname provided, or not known
+2026-07-29 01:09:35,806 - __main__ - WARNING - Could not get quotes from multiple DEXs
+2026-07-29 01:09:35,806 - __main__ - INFO - No opportunities found this cycle
+2026-07-29 01:09:35,806 - __main__ - INFO - Total P&L: 0.0000 USDC
+2026-07-29 01:09:35,806 - __main__ - INFO - Total fees: 0.0000 USDC
+2026-07-29 01:09:35,806 - __main__ - INFO - Sleeping for 10 seconds...

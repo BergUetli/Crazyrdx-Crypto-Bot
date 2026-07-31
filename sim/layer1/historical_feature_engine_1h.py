@@ -20,6 +20,7 @@ import numpy as np
 
 from config import DATA_DIR
 from layer1.historical_downloader import get_candles, DB_HISTORICAL
+from layer1.external_features import get_funding_at, get_funding_history, get_cex_price_at, get_cex_price_history, init_external_db
 
 DB_HIST_FEATURES_1H = DATA_DIR / "historical_features_1h.db"
 
@@ -142,6 +143,23 @@ class HistoricalFeatureVector1h:
     tft_prediction: float      # -1 to +1 (bearish to bullish)
     tft_confidence: float      # 0 to 1
 
+    # External market features (funding, basis, order flow imbalance)
+    funding_rate: float            # current funding rate (fraction, e.g. 0.0001)
+    funding_rate_8h_avg: float     # average over last 3 funding periods (~24h)
+    funding_rate_roc: float        # change vs 8h ago
+    funding_rate_extreme: float    # 1 if |rate| > 2x avg (regime shift flag)
+    cex_dex_basis_bps: float       # (cex_price - dex_price) / dex_price * 10000
+    cex_dex_basis_roc_4h: float    # change in basis over 4 candles
+    cex_dex_basis_roc_1d: float    # change over 24 candles
+    cex_dex_basis_extreme: float   # 1 if |basis| > 50 bps
+    taker_flow_imbalance: float    # (taker_buy - taker_sell) / total (0=balanced)
+    taker_flow_imbalance_4h: float # rolling 4h average
+    taker_flow_imbalance_roc: float # change vs 4h ago
+    taker_flow_persistence: float  # 1 if same sign for 3+ consecutive candles
+    dex_liquidity_ratio: float     # current liquidity vs 20-bar average (placeholder 1.0)
+    funding_basis_divergence: float # funding positive but basis negative (or vice versa)
+    market_stress_index: float     # composite: high funding + high basis + high vol = stressed
+
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
@@ -170,15 +188,57 @@ class HistoricalFeatureEngine1h:
         "volatility_regime_1h_4h", "volatility_regime_4h_1d", "volatility_regime_1h_1d",
         "price_vs_4h_sma", "price_vs_1d_sma", "volume_confirmation_1h_4h",
         "tft_prediction", "tft_confidence",
+        # External market features
+        "funding_rate", "funding_rate_8h_avg", "funding_rate_roc", "funding_rate_extreme",
+        "cex_dex_basis_bps", "cex_dex_basis_roc_4h", "cex_dex_basis_roc_1d", "cex_dex_basis_extreme",
+        "taker_flow_imbalance", "taker_flow_imbalance_4h", "taker_flow_imbalance_roc", "taker_flow_persistence",
+        "dex_liquidity_ratio", "funding_basis_divergence", "market_stress_index",
     ]
 
-    def __init__(self, pair: str):
+    def __init__(self, pair: str, symbol_cex: str = "SOLUSDT"):
         self.pair = pair
+        self.symbol_cex = symbol_cex
         self.candles: List[Dict[str, Any]] = []
         self.closes: List[float] = []
         self.volumes: List[float] = []
         self.returns: List[float] = []
         self.taker_buys: List[float] = []
+        # Pre-load external data for fast lookups
+        init_external_db()
+        self._funding_cache: Dict[int, float] = {}
+        self._cex_cache: Dict[int, float] = {}
+        self._load_external_caches()
+
+    def _load_external_caches(self):
+        """Load funding rates and CEX prices into memory for fast per-candle lookup."""
+        try:
+            conn = sqlite3.connect(str(DB_HISTORICAL.parent / "external_features.db"))
+            for row in conn.execute("SELECT ts, funding_rate FROM funding_rates WHERE symbol=?", (self.symbol_cex,)):
+                self._funding_cache[int(row[0])] = float(row[1])
+            for row in conn.execute("SELECT ts, price FROM cex_prices WHERE symbol=?", (self.symbol_cex,)):
+                self._cex_cache[int(row[0])] = float(row[1])
+            conn.close()
+        except Exception:
+            pass  # Tables may not exist yet; features will default to 0.0
+
+    def _funding_at(self, ts: int) -> float:
+        """Most recent funding rate at or before ts."""
+        best = 0.0
+        for fts, rate in self._funding_cache.items():
+            if fts <= ts and (best == 0.0 or fts > self._last_funding_ts):
+                best = rate
+                self._last_funding_ts = fts
+        return best if best else 0.0
+
+    def _cex_price_at(self, ts: int) -> float:
+        """Most recent CEX price at or before ts."""
+        best_ts = 0
+        best_price = 0.0
+        for cts, price in self._cex_cache.items():
+            if cts <= ts and cts >= best_ts:
+                best_ts = cts
+                best_price = price
+        return best_price
 
     def add_candles(self, candles: List[Dict[str, Any]]):
         """Add a batch of candles."""
@@ -401,6 +461,88 @@ class HistoricalFeatureEngine1h:
         tft_prediction = 0.0
         tft_confidence = 0.0
 
+        # === External market features ===
+        # Funding rates
+        funding_now = self._funding_at(ts)
+        # Average over last ~24h (3 funding periods at 8h each)
+        funding_vals = [self._funding_at(ts - i * 28800000) for i in range(3)]
+        funding_avg = sum(funding_vals) / len(funding_vals) if funding_vals else 0.0
+        funding_roc = funding_now - (funding_vals[-1] if funding_vals else 0.0)
+        funding_extreme = 1.0 if abs(funding_now) > 2 * abs(funding_avg) and abs(funding_avg) > 0 else 0.0
+
+        # CEX-DEX basis
+        cex_price = self._cex_price_at(ts)
+        dex_price = c["close"]
+        if cex_price > 0 and dex_price > 0:
+            basis_bps = (cex_price - dex_price) / dex_price * 10000
+        else:
+            basis_bps = 0.0
+
+        # Basis ROC
+        basis_4h_ago = 0.0
+        basis_1d_ago = 0.0
+        if idx >= 4:
+            cex_4h = self._cex_price_at(self.candles[idx-4]["ts"])
+            dex_4h = self.candles[idx-4]["close"]
+            if cex_4h > 0 and dex_4h > 0:
+                basis_4h_ago = (cex_4h - dex_4h) / dex_4h * 10000
+        if idx >= 24:
+            cex_1d = self._cex_price_at(self.candles[idx-24]["ts"])
+            dex_1d = self.candles[idx-24]["close"]
+            if cex_1d > 0 and dex_1d > 0:
+                basis_1d_ago = (cex_1d - dex_1d) / dex_1d * 10000
+        basis_roc_4h = basis_bps - basis_4h_ago
+        basis_roc_1d = basis_bps - basis_1d_ago
+        basis_extreme = 1.0 if abs(basis_bps) > 50 else 0.0
+
+        # Taker flow imbalance (derived from existing taker data)
+        taker_sell = c["volume"] - taker_buy
+        flow_imb = (taker_buy - taker_sell) / c["volume"] if c["volume"] > 0 else 0.0
+
+        # Rolling 4h average of flow imbalance
+        flow_imb_history = []
+        for j in range(max(0, idx-3), idx+1):
+            cj = self.candles[j]
+            tb = cj.get("taker_buy_vol", 0)
+            ts_sell = cj["volume"] - tb
+            flow_imb_history.append((tb - ts_sell) / cj["volume"] if cj["volume"] > 0 else 0.0)
+        flow_imb_4h = sum(flow_imb_history) / len(flow_imb_history) if flow_imb_history else 0.0
+
+        # Flow ROC
+        flow_imb_4h_prev = 0.0
+        if idx >= 4:
+            flow_imb_prev_hist = []
+            for j in range(max(0, idx-7), max(0, idx-3)):
+                cj = self.candles[j]
+                tb = cj.get("taker_buy_vol", 0)
+                ts_sell = cj["volume"] - tb
+                flow_imb_prev_hist.append((tb - ts_sell) / cj["volume"] if cj["volume"] > 0 else 0.0)
+            flow_imb_4h_prev = sum(flow_imb_prev_hist) / len(flow_imb_prev_hist) if flow_imb_prev_hist else 0.0
+        flow_imb_roc = flow_imb_4h - flow_imb_4h_prev
+
+        # Flow persistence: same sign for 3+ consecutive candles
+        flow_persistence = 0.0
+        if len(flow_imb_history) >= 3:
+            signs = [1 if x > 0 else -1 for x in flow_imb_history[-3:]]
+            if len(set(signs)) == 1:
+                flow_persistence = 1.0
+
+        # DEX liquidity ratio (placeholder, will use real data later)
+        dex_liquidity_ratio = 1.0
+
+        # Funding-basis divergence (they should move together; divergence = stress)
+        funding_basis_divergence = 0.0
+        if funding_now > 0 and basis_bps < 0:
+            funding_basis_divergence = 1.0
+        elif funding_now < 0 and basis_bps > 0:
+            funding_basis_divergence = 1.0
+
+        # Market stress index (composite)
+        vol_norm = min(vol(24) / 200.0, 1.0) if vol(24) > 0 else 0.0
+        fund_norm = min(abs(funding_now) / 0.001, 1.0) if funding_now != 0 else 0.0
+        basis_norm = min(abs(basis_bps) / 50.0, 1.0) if basis_bps != 0 else 0.0
+        market_stress = (vol_norm + fund_norm + basis_norm) / 3.0
+
         return HistoricalFeatureVector1h(
             ts=ts,
             pair=self.pair,
@@ -469,6 +611,21 @@ class HistoricalFeatureEngine1h:
             volume_confirmation_1h_4h=volume_confirmation_1h_4h,
             tft_prediction=tft_prediction,
             tft_confidence=tft_confidence,
+            funding_rate=funding_now,
+            funding_rate_8h_avg=funding_avg,
+            funding_rate_roc=funding_roc,
+            funding_rate_extreme=funding_extreme,
+            cex_dex_basis_bps=basis_bps,
+            cex_dex_basis_roc_4h=basis_roc_4h,
+            cex_dex_basis_roc_1d=basis_roc_1d,
+            cex_dex_basis_extreme=basis_extreme,
+            taker_flow_imbalance=flow_imb,
+            taker_flow_imbalance_4h=flow_imb_4h,
+            taker_flow_imbalance_roc=flow_imb_roc,
+            taker_flow_persistence=flow_persistence,
+            dex_liquidity_ratio=dex_liquidity_ratio,
+            funding_basis_divergence=funding_basis_divergence,
+            market_stress_index=market_stress,
         )
 
 

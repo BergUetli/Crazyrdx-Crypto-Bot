@@ -1,0 +1,53 @@
+=== Daily Trading Bot Report ===
+Date: 2026-07-28
+Generated: 2026-07-29T04:12:45.721291
+
+Here is the daily trading bot report:
+
+**Date:** 2026-07-28
+**Data Collected:** 0 quotes, 1156 feature vectors
+**Model Performance:**
+* TFT directional accuracy: 50.8%
+* No other metrics available (TFT precision and recall are 0.0%)
+**No profitable strategies detected**
+
+**Key Metrics:**
+* Best P&L: $0.00
+* Compute Cost: $0.00 CHF (today), $0.00 CHF (monthly estimate)
+
+Note: Since there were no profitable strategies, we have flagged this in th[2D[K
+the report. The TFT model is not performing well, but it's still collecting[10D[K
+collecting data and running models for future improvement.
+
+--- Raw Stats ---
+{
+  "date": "2026-07-28",
+  "quotes": 0,
+  "features": 1156,
+  "models_trained": 4,
+  "predictions": 0,
+  "trades": 0,
+  "alerts": 0,
+  "training_runs": 4
+}
+
+--- Metrics ---
+{
+  "tft": {
+    "directional_accuracy": 0.5077720207253886,
+    "precision": 0.0,
+    "recall": 0.0,
+    "mse": NaN
+  },
+  "validation": {
+    "strategies_tested": 7,
+    "best_strategy": "momentum_breakout",
+    "best_pnl": 0.0
+  }
+}
+
+--- Cost ---
+{
+  "total_chf": 0.0,
+  "monthly_estimate_chf": 0.0
+}

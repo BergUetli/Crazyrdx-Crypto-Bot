@@ -77,7 +77,7 @@ def test_data_layer():
     check("1h features exist", len(features_1h) > 0)
     if features_1h:
         f1h = features_1h[0]["features"]
-        check("1h features have 67 fields", len(f1h) == 67, f"got {len(f1h)}")
+        check("1h features have 82 fields", len(f1h) == 82, f"got {len(f1h)}")
         check("1h has tft_prediction", "tft_prediction" in f1h)
         check("1h has tft_confidence", "tft_confidence" in f1h)
         check("1h has taker_buy_ratio", "taker_buy_ratio" in f1h)
@@ -119,7 +119,7 @@ def test_genome():
 
     from evolution.genome import StrategyGenome, EntryCondition, random_genome, INDICATORS, LOGIC_OPS
 
-    check("indicators present", len(INDICATORS) >= 50, f"got {len(INDICATORS)}")
+    check("indicators present", len(INDICATORS) >= 65, f"got {len(INDICATORS)}")
     check("6 selection logic ops", len(LOGIC_OPS) == 6, f"got {len(LOGIC_OPS)}")
     check("RANDOM banned from selection LOGIC_OPS", "RANDOM" not in LOGIC_OPS)
     check("TFT in LOGIC_OPS", "TFT" in LOGIC_OPS)

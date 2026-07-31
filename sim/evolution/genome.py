@@ -38,6 +38,11 @@ INDICATORS = [
     "volume_confirmation_1h_4h",
     # Model heads (may be zero until TFT inference is wired)
     "tft_prediction", "tft_confidence",
+    # External market features (funding, basis, order flow)
+    "funding_rate", "funding_rate_8h_avg", "funding_rate_roc", "funding_rate_extreme",
+    "cex_dex_basis_bps", "cex_dex_basis_roc_4h", "cex_dex_basis_roc_1d", "cex_dex_basis_extreme",
+    "taker_flow_imbalance", "taker_flow_imbalance_4h", "taker_flow_imbalance_roc", "taker_flow_persistence",
+    "dex_liquidity_ratio", "funding_basis_divergence", "market_stress_index",
 ]
 
 # Threshold ranges per indicator type
@@ -62,6 +67,20 @@ THRESHOLD_RANGES = {
     "volume_confirmation": (0.0, 500.0),
     "tft_prediction": (-1.0, 1.0),
     "tft_confidence": (0.0, 1.0),
+    "funding_rate": (-0.01, 0.01),
+    "funding_rate_8h_avg": (-0.01, 0.01),
+    "funding_rate_roc": (-0.005, 0.005),
+    "funding_rate_extreme": (0.0, 1.0),
+    "cex_dex_basis": (-200.0, 200.0),
+    "cex_dex_basis_roc": (-100.0, 100.0),
+    "cex_dex_basis_extreme": (0.0, 1.0),
+    "taker_flow_imbalance": (-1.0, 1.0),
+    "taker_flow_imbalance_4h": (-1.0, 1.0),
+    "taker_flow_imbalance_roc": (-2.0, 2.0),
+    "taker_flow_persistence": (0.0, 1.0),
+    "dex_liquidity_ratio": (0.1, 10.0),
+    "funding_basis_divergence": (0.0, 1.0),
+    "market_stress_index": (0.0, 1.0),
 }
 
 # Categorical options

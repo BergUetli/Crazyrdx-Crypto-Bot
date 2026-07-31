@@ -1,0 +1,808 @@
+{
+  "updated_ts": 1785529323.419817,
+  "n": 6,
+  "champions": [
+    {
+      "genome_id": "cross_clone_cl_clone_cl_6607",
+      "score": 8666.646324753516,
+      "signature": [
+        "OR",
+        [
+          [
+            "hl_range_avg_1d",
+            ">=",
+            128.075
+          ],
+          [
+            "hl_range_avg_1d",
+            ">=",
+            128.075
+          ],
+          [
+            "hl_range_avg_1d",
+            ">=",
+            128.836
+          ]
+        ],
+        "volatility_scaled",
+        0.477,
+        [
+          [
+            "time_stop",
+            4.0
+          ],
+          [
+            "time_stop",
+            17.0
+          ]
+        ]
+      ],
+      "genome": {
+        "entry_conditions": [
+          {
+            "indicator": "hl_range_avg_1d",
+            "operator": ">=",
+            "threshold": 128.07499654353427
+          },
+          {
+            "indicator": "hl_range_avg_1d",
+            "operator": ">=",
+            "threshold": 128.07499654353427
+          },
+          {
+            "indicator": "hl_range_avg_1d",
+            "operator": ">=",
+            "threshold": 128.83603902853497
+          }
+        ],
+        "entry_logic": "OR",
+        "filters": [
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 5,
+              "direction": "up"
+            }
+          },
+          {
+            "filter_type": "volatility_regime",
+            "params": {
+              "min_vol": 38.62863777251012,
+              "max_vol": 180.17942399038606
+            }
+          },
+          {
+            "filter_type": "volatility_regime",
+            "params": {
+              "min_vol": 38.62863777251012,
+              "max_vol": 180.17942399038606
+            }
+          }
+        ],
+        "sizing_method": "volatility_scaled",
+        "sizing_base": 0.47700161526596496,
+        "sizing_max": 0.5897393188522777,
+        "exit_rules": [
+          {
+            "exit_type": "time_stop",
+            "value": 4
+          },
+          {
+            "exit_type": "time_stop",
+            "value": 17
+          }
+        ],
+        "genome_id": "cross_clone_cl_clone_cl_6607",
+        "generation": 79,
+        "parent_ids": [
+          "clone_clone_clone_clone_mut_cross_cross_cl_clone_mu_9660_7974_4260_3176_9581_4325",
+          "clone_clone_clone_mut_cross_cross_cl_clone_mu_5455_9157_1409_7904_4549"
+        ],
+        "fitness": 8704.96801193273,
+        "backtest_results": {
+          "genome_id": "cross_clone_cl_clone_cl_6607",
+          "fitness": 8704.96801193273,
+          "total_trades": 67,
+          "win_rate": 0.5223880597014925,
+          "total_pnl": 9.70174786422944,
+          "sharpe_ratio": 45.09910161975038,
+          "max_drawdown": 0.08118034334315279,
+          "profit_factor": 1.4554168916808998,
+          "final_capital": 109.70174786422936
+        }
+      },
+      "gates_summary": {
+        "feasibility": {
+          "passed": true
+        },
+        "oos": {
+          "passed": true
+        },
+        "walk_forward": {
+          "passed": true
+        },
+        "fee_stress": {
+          "passed": true
+        },
+        "perturbation": {
+          "passed": true
+        },
+        "mev": {
+          "passed": true
+        },
+        "dsr": {
+          "passed": true
+        }
+      },
+      "ts": 1785517774.4095
+    },
+    {
+      "genome_id": "clone_clone_clone_clone_clone_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_8753_6167_7076_3262_3428_7484_4332_9924_9455_3040_8494",
+      "score": 8213.559729138604,
+      "signature": [
+        "AND",
+        [
+          [
+            "taker_buy_sma_ratio",
+            "<",
+            1.1599
+          ],
+          [
+            "taker_buy_sma_ratio",
+            "<=",
+            1.8763
+          ],
+          [
+            "returns_lag_1",
+            ">",
+            -1.5784
+          ],
+          [
+            "momentum_divergence_4h_1d",
+            "<",
+            2.6915
+          ]
+        ],
+        "kelly",
+        0.2389,
+        [
+          [
+            "stop_loss",
+            0.0031
+          ],
+          [
+            "time_stop",
+            36.0
+          ]
+        ]
+      ],
+      "genome": {
+        "entry_conditions": [
+          {
+            "indicator": "taker_buy_sma_ratio",
+            "operator": "<",
+            "threshold": 1.1598938835263017
+          },
+          {
+            "indicator": "taker_buy_sma_ratio",
+            "operator": "<=",
+            "threshold": 1.8763141733226956
+          },
+          {
+            "indicator": "returns_lag_1",
+            "operator": ">",
+            "threshold": -1.578405818784244
+          },
+          {
+            "indicator": "momentum_divergence_4h_1d",
+            "operator": "<",
+            "threshold": 2.691471171629445
+          }
+        ],
+        "entry_logic": "AND",
+        "filters": [
+          {
+            "filter_type": "time_of_day",
+            "params": {
+              "hours": [
+                18,
+                9
+              ]
+            }
+          },
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 20,
+              "direction": "down"
+            }
+          },
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 5,
+              "direction": "down"
+            }
+          }
+        ],
+        "sizing_method": "kelly",
+        "sizing_base": 0.23890494966155879,
+        "sizing_max": 0.5952077275890056,
+        "exit_rules": [
+          {
+            "exit_type": "stop_loss",
+            "value": 0.003099550508645601
+          },
+          {
+            "exit_type": "time_stop",
+            "value": 36
+          }
+        ],
+        "genome_id": "clone_clone_clone_clone_clone_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_8753_6167_7076_3262_3428_7484_4332_9924_9455_3040_8494",
+        "generation": 49,
+        "parent_ids": [
+          "clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_8753_6167_7076_3262"
+        ],
+        "fitness": 8280.496278324177,
+        "backtest_results": {
+          "genome_id": "clone_clone_clone_clone_clone_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_8753_6167_7076_3262_3428_7484_4332_9924_9455_3040_8494",
+          "fitness": 8280.496278324177,
+          "total_trades": 30,
+          "win_rate": 0.6333333333333333,
+          "total_pnl": 6.511740319582008,
+          "sharpe_ratio": 56.92416001139081,
+          "max_drawdown": 0.058159935265174705,
+          "profit_factor": 1.547972714677777,
+          "final_capital": 106.51174031958206
+        }
+      },
+      "gates_summary": {
+        "feasibility": {
+          "passed": true
+        },
+        "oos": {
+          "passed": true
+        },
+        "walk_forward": {
+          "passed": true
+        },
+        "fee_stress": {
+          "passed": true
+        },
+        "perturbation": {
+          "passed": true
+        },
+        "mev": {
+          "passed": true
+        },
+        "dsr": {
+          "passed": true
+        }
+      },
+      "ts": 1785529160.427556
+    },
+    {
+      "genome_id": "clone_mut_clone_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_5389_9363_1494_1162_4928_3382_7058_3563_4219",
+      "score": 8213.559729138604,
+      "signature": [
+        "AND",
+        [
+          [
+            "taker_buy_sma_ratio",
+            "<",
+            1.1599
+          ],
+          [
+            "taker_buy_sma_ratio",
+            "<=",
+            2.2299
+          ],
+          [
+            "returns_lag_1",
+            ">",
+            -1.4373
+          ],
+          [
+            "momentum_divergence_4h_1d",
+            "<",
+            2.6915
+          ]
+        ],
+        "kelly",
+        0.2463,
+        [
+          [
+            "stop_loss",
+            0.0031
+          ],
+          [
+            "time_stop",
+            36.0
+          ]
+        ]
+      ],
+      "genome": {
+        "entry_conditions": [
+          {
+            "indicator": "taker_buy_sma_ratio",
+            "operator": "<",
+            "threshold": 1.1598938835263017
+          },
+          {
+            "indicator": "taker_buy_sma_ratio",
+            "operator": "<=",
+            "threshold": 2.229912709229176
+          },
+          {
+            "indicator": "returns_lag_1",
+            "operator": ">",
+            "threshold": -1.437306819283315
+          },
+          {
+            "indicator": "momentum_divergence_4h_1d",
+            "operator": "<",
+            "threshold": 2.691471171629445
+          }
+        ],
+        "entry_logic": "AND",
+        "filters": [
+          {
+            "filter_type": "time_of_day",
+            "params": {
+              "hours": [
+                18,
+                9
+              ]
+            }
+          },
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 20,
+              "direction": "down"
+            }
+          },
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 5,
+              "direction": "down"
+            }
+          }
+        ],
+        "sizing_method": "kelly",
+        "sizing_base": 0.24625740454859552,
+        "sizing_max": 0.5952077275890056,
+        "exit_rules": [
+          {
+            "exit_type": "stop_loss",
+            "value": 0.003099550508645601
+          },
+          {
+            "exit_type": "time_stop",
+            "value": 36
+          }
+        ],
+        "genome_id": "clone_mut_clone_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_5389_9363_1494_1162_4928_3382_7058_3563_4219",
+        "generation": 57,
+        "parent_ids": [
+          "clone_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_5389_9363_1494_1162_4928_3382_7058"
+        ],
+        "fitness": 8203.869073441572,
+        "backtest_results": {
+          "genome_id": "clone_mut_clone_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_mut_clone_mut_clone_clone_clone_clone_mut_clone_clone_clone_cross_cross_cr_cross_cl_3755_9052_4058_8141_7124_9343_2185_9359_1883_4425_4355_1792_7877_8917_6546_4513_5389_9363_1494_1162_4928_3382_7058_3563_4219",
+          "fitness": 8203.869073441572,
+          "total_trades": 30,
+          "win_rate": 0.6,
+          "total_pnl": 6.591859059596357,
+          "sharpe_ratio": 57.7272697056859,
+          "max_drawdown": 0.05812941828392405,
+          "profit_factor": 1.565160261006714,
+          "final_capital": 106.59185905959637
+        }
+      },
+      "gates_summary": {
+        "feasibility": {
+          "passed": true
+        },
+        "oos": {
+          "passed": true
+        },
+        "walk_forward": {
+          "passed": true
+        },
+        "fee_stress": {
+          "passed": true
+        },
+        "perturbation": {
+          "passed": true
+        },
+        "mev": {
+          "passed": true
+        },
+        "dsr": {
+          "passed": true
+        }
+      },
+      "ts": 1785529160.5328362
+    },
+    {
+      "genome_id": "clone_mut_cross_cross_cl_clone_mu_5455_9157_1409",
+      "score": 8197.13299332708,
+      "signature": [
+        "OR",
+        [
+          [
+            "hl_range_avg_1d",
+            ">=",
+            128.836
+          ],
+          [
+            "hl_range_avg_1d",
+            ">",
+            128.075
+          ],
+          [
+            "hl_range_avg_1d",
+            ">=",
+            128.075
+          ]
+        ],
+        "volatility_scaled",
+        0.4848,
+        [
+          [
+            "time_stop",
+            4.0
+          ]
+        ]
+      ],
+      "genome": {
+        "entry_conditions": [
+          {
+            "indicator": "hl_range_avg_1d",
+            "operator": ">=",
+            "threshold": 128.83603902853497
+          },
+          {
+            "indicator": "hl_range_avg_1d",
+            "operator": ">",
+            "threshold": 128.07499654353427
+          },
+          {
+            "indicator": "hl_range_avg_1d",
+            "operator": ">=",
+            "threshold": 128.07499654353427
+          }
+        ],
+        "entry_logic": "OR",
+        "filters": [
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 5,
+              "direction": "up"
+            }
+          },
+          {
+            "filter_type": "volatility_regime",
+            "params": {
+              "min_vol": 38.62863777251012,
+              "max_vol": 180.17942399038606
+            }
+          },
+          {
+            "filter_type": "volatility_regime",
+            "params": {
+              "min_vol": 38.62863777251012,
+              "max_vol": 180.17942399038606
+            }
+          }
+        ],
+        "sizing_method": "volatility_scaled",
+        "sizing_base": 0.48479813983933495,
+        "sizing_max": 0.5897393188522777,
+        "exit_rules": [
+          {
+            "exit_type": "time_stop",
+            "value": 4
+          }
+        ],
+        "genome_id": "clone_mut_cross_cross_cl_clone_mu_5455_9157_1409",
+        "generation": 74,
+        "parent_ids": [
+          "cross_cross_cl_clone_mu_5455"
+        ],
+        "fitness": 8696.563786507926,
+        "backtest_results": {
+          "genome_id": "clone_mut_cross_cross_cl_clone_mu_5455_9157_1409",
+          "fitness": 8696.563786507926,
+          "total_trades": 67,
+          "win_rate": 0.5223880597014925,
+          "total_pnl": 9.99502718924496,
+          "sharpe_ratio": 46.089467441120874,
+          "max_drawdown": 0.08261773497540159,
+          "profit_factor": 1.4690366278628169,
+          "final_capital": 109.99502718924494
+        }
+      },
+      "gates_summary": {
+        "feasibility": {
+          "passed": true
+        },
+        "oos": {
+          "passed": true
+        },
+        "walk_forward": {
+          "passed": true
+        },
+        "fee_stress": {
+          "passed": true
+        },
+        "perturbation": {
+          "passed": true
+        },
+        "mev": {
+          "passed": true
+        },
+        "dsr": {
+          "passed": true
+        }
+      },
+      "ts": 1785517774.4364722
+    },
+    {
+      "genome_id": "clone_cross_clone_cr_clone_cl_3664_7365",
+      "score": 7867.528526524554,
+      "signature": [
+        "TFT",
+        [
+          [
+            "body_pct",
+            "<",
+            86.3277
+          ],
+          [
+            "hour_of_day_sin",
+            "<",
+            49.6363
+          ],
+          [
+            "body_pct",
+            "<",
+            86.3277
+          ]
+        ],
+        "volatility_scaled",
+        0.173,
+        [
+          [
+            "stop_loss",
+            0.010261
+          ]
+        ]
+      ],
+      "genome": {
+        "entry_conditions": [
+          {
+            "indicator": "body_pct",
+            "operator": "<",
+            "threshold": 86.32765357115156
+          },
+          {
+            "indicator": "hour_of_day_sin",
+            "operator": "<",
+            "threshold": 49.63627404642035
+          },
+          {
+            "indicator": "body_pct",
+            "operator": "<",
+            "threshold": 86.32765357115156
+          }
+        ],
+        "entry_logic": "TFT",
+        "filters": [
+          {
+            "filter_type": "time_of_day",
+            "params": {
+              "hours": [
+                9,
+                16
+              ]
+            }
+          },
+          {
+            "filter_type": "day_of_week",
+            "params": {
+              "days": [
+                2,
+                4
+              ]
+            }
+          },
+          {
+            "filter_type": "day_of_week",
+            "params": {
+              "days": [
+                2,
+                4
+              ]
+            }
+          }
+        ],
+        "sizing_method": "volatility_scaled",
+        "sizing_base": 0.17299679048450495,
+        "sizing_max": 0.7500490136337206,
+        "exit_rules": [
+          {
+            "exit_type": "stop_loss",
+            "value": 0.01026071173142357
+          }
+        ],
+        "genome_id": "clone_cross_clone_cr_clone_cl_3664_7365",
+        "generation": 59,
+        "parent_ids": [
+          "clone_cross_clone_cl_cross_mu_3200_4149",
+          "clone_clone_mut_cross_clone_cr_clone_cr_6371_2602_4984_6633"
+        ],
+        "fitness": 8854.644967938866,
+        "backtest_results": {
+          "genome_id": "clone_cross_clone_cr_clone_cl_3664_7365",
+          "fitness": 8854.644967938866,
+          "total_trades": 34,
+          "win_rate": 0.7647058823529411,
+          "total_pnl": 11.172918887374347,
+          "sharpe_ratio": 146.91417734543484,
+          "max_drawdown": 0.016267181603586034,
+          "profit_factor": 3.7954975730463483,
+          "final_capital": 111.17291888737432
+        }
+      },
+      "gates_summary": {
+        "feasibility": {
+          "passed": true
+        },
+        "oos": {
+          "passed": true
+        },
+        "walk_forward": {
+          "passed": true
+        },
+        "fee_stress": {
+          "passed": true
+        },
+        "perturbation": {
+          "passed": true
+        },
+        "mev": {
+          "passed": true
+        },
+        "dsr": {
+          "passed": true
+        }
+      },
+      "ts": 1785487372.483681
+    },
+    {
+      "genome_id": "clone_clone_cross_cross_cr_cross_cr_4567_3055_2869",
+      "score": 7838.528344405697,
+      "signature": [
+        "TFT",
+        [
+          [
+            "body_pct",
+            "<",
+            86.3277
+          ],
+          [
+            "body_pct",
+            "<",
+            86.3277
+          ]
+        ],
+        "volatility_scaled",
+        0.1714,
+        [
+          [
+            "stop_loss",
+            0.010261
+          ],
+          [
+            "stop_loss",
+            0.004198
+          ]
+        ]
+      ],
+      "genome": {
+        "entry_conditions": [
+          {
+            "indicator": "body_pct",
+            "operator": "<",
+            "threshold": 86.32765357115156
+          },
+          {
+            "indicator": "body_pct",
+            "operator": "<",
+            "threshold": 86.32765357115156
+          }
+        ],
+        "entry_logic": "TFT",
+        "filters": [
+          {
+            "filter_type": "day_of_week",
+            "params": {
+              "days": [
+                2,
+                4
+              ]
+            }
+          },
+          {
+            "filter_type": "time_of_day",
+            "params": {
+              "hours": [
+                9,
+                16
+              ]
+            }
+          }
+        ],
+        "sizing_method": "volatility_scaled",
+        "sizing_base": 0.17144630194831612,
+        "sizing_max": 0.7500490136337206,
+        "exit_rules": [
+          {
+            "exit_type": "stop_loss",
+            "value": 0.01026071173142357
+          },
+          {
+            "exit_type": "stop_loss",
+            "value": 0.004197780593213487
+          }
+        ],
+        "genome_id": "clone_clone_cross_cross_cr_cross_cr_4567_3055_2869",
+        "generation": 61,
+        "parent_ids": [
+          "cross_cross_cr_clone_cl_3526",
+          "cross_cross_cl_cross_cr_2454"
+        ],
+        "fitness": 8745.786553928887,
+        "backtest_results": {
+          "genome_id": "clone_clone_cross_cross_cr_cross_cr_4567_3055_2869",
+          "fitness": 8745.786553928887,
+          "total_trades": 34,
+          "win_rate": 0.7647058823529411,
+          "total_pnl": 11.335692612789066,
+          "sharpe_ratio": 151.24859798887115,
+          "max_drawdown": 0.016325036658391356,
+          "profit_factor": 3.8681063486040306,
+          "final_capital": 111.3356926127891
+        }
+      },
+      "gates_summary": {
+        "feasibility": {
+          "passed": true
+        },
+        "oos": {
+          "passed": true
+        },
+        "walk_forward": {
+          "passed": true
+        },
+        "fee_stress": {
+          "passed": true
+        },
+        "perturbation": {
+          "passed": true
+        },
+        "mev": {
+          "passed": true
+        },
+        "dsr": {
+          "passed": true
+        }
+      },
+      "ts": 1785487372.6380029
+    }
+  ]
+}
