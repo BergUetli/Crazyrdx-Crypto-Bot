@@ -422,3 +422,13 @@
 {"ts": 1785529387.569782, "n_trials": 3, "meta": {"test": true}}
 {"ts": 1785529406.8637052, "n_trials": 3, "meta": {"test": true}}
 {"ts": 1785529410.714566, "n_trials": 13650, "meta": {"cycle": 361, "generations": 90, "pop": 150, "best_fitness": 3934.2382194301317, "best_id": "clone_clone_clone_clone_clone_clone_mut_cross_mut_clon_clone_cl_6158_2142_3797_3114_1112_5221_1684_3494"}}
+{"ts": 1785529522.447582, "n_trials": 7800, "meta": {"cycle": 1, "generations": 51, "pop": 150, "best_fitness": 2.0497799675685222e+17, "best_id": "mut_cross_mut_clon_clone_cl_9320_8843"}}
+{"ts": 1785529584.5712042, "n_trials": 10350, "meta": {"cycle": 2, "generations": 68, "pop": 150, "best_fitness": 1.893885960641958e+17, "best_id": "cross_clone_cr_clone_cl_8477"}}
+{"ts": 1785529632.83916, "n_trials": 10200, "meta": {"cycle": 3, "generations": 67, "pop": 150, "best_fitness": 7.540036946786419e+17, "best_id": "cross_cross_mu_mut_clon_3352"}}
+{"ts": 1785529674.367247, "n_trials": 6600, "meta": {"cycle": 4, "generations": 43, "pop": 150, "best_fitness": 1.0465134596203946e+17, "best_id": "mut_cross_cross_cl_clone_cr_4231_2658"}}
+{"ts": 1785529706.8149939, "n_trials": 5850, "meta": {"cycle": 5, "generations": 38, "pop": 150, "best_fitness": 1.5201339440331728e+17, "best_id": "cross_clone_cl_clone_cl_1492"}}
+{"ts": 1785529756.3763342, "n_trials": 8700, "meta": {"cycle": 6, "generations": 57, "pop": 150, "best_fitness": 2.5437187195949104e+17, "best_id": "mut_cross_mut_cros_clone_cr_3794_7553"}}
+{"ts": 1785529784.674489, "n_trials": 4650, "meta": {"cycle": 7, "generations": 30, "pop": 150, "best_fitness": 1.8462770634236426e+17, "best_id": "cross_cross_cr_cross_cr_4291"}}
+{"ts": 1785529825.26805, "n_trials": 3, "meta": {"test": true}}
+{"ts": 1785529828.486478, "n_trials": 8700, "meta": {"cycle": 8, "generations": 57, "pop": 150, "best_fitness": 4.65419519531672e+17, "best_id": "mut_clone_clone_clone_clone_clone_cross_mut_clon_cross_cr_4415_2279_5954_7312_5922_5317_3746"}}
+{"ts": 1785529859.6839721, "n_trials": 5250, "meta": {"cycle": 9, "generations": 34, "pop": 150, "best_fitness": 3.279833039784316e+17, "best_id": "mut_cross_cross_cl_clone_cr_9056_2413"}}

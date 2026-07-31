@@ -67,20 +67,20 @@ THRESHOLD_RANGES = {
     "volume_confirmation": (0.0, 500.0),
     "tft_prediction": (-1.0, 1.0),
     "tft_confidence": (0.0, 1.0),
-    "funding_rate": (-0.01, 0.01),
-    "funding_rate_8h_avg": (-0.01, 0.01),
-    "funding_rate_roc": (-0.005, 0.005),
+    "funding_rate": (-0.001, 0.001),
+    "funding_rate_8h_avg": (-0.001, 0.001),
+    "funding_rate_roc": (-0.0005, 0.0005),
     "funding_rate_extreme": (0.0, 1.0),
-    "cex_dex_basis": (-200.0, 200.0),
-    "cex_dex_basis_roc": (-100.0, 100.0),
+    "cex_dex_basis": (0.0, 20.0),
+    "cex_dex_basis_roc": (-10.0, 10.0),
     "cex_dex_basis_extreme": (0.0, 1.0),
-    "taker_flow_imbalance": (-1.0, 1.0),
-    "taker_flow_imbalance_4h": (-1.0, 1.0),
-    "taker_flow_imbalance_roc": (-2.0, 2.0),
+    "taker_flow_imbalance": (-0.5, 0.5),
+    "taker_flow_imbalance_4h": (-0.5, 0.5),
+    "taker_flow_imbalance_roc": (-1.0, 1.0),
     "taker_flow_persistence": (0.0, 1.0),
     "dex_liquidity_ratio": (0.1, 10.0),
     "funding_basis_divergence": (0.0, 1.0),
-    "market_stress_index": (0.0, 1.0),
+    "market_stress_index": (0.0, 0.5),
 }
 
 # Categorical options
@@ -175,14 +175,24 @@ class StrategyGenome:
 def random_genome(generation: int = 0) -> StrategyGenome:
     """Generate a random strategy genome.
 
-    Biased toward more trades: 60% chance of OR logic, 60% chance of 1-2 conditions.
-    This gives the evolution more trades per strategy to work with.
+    Biased toward more trades and richer features:
+    - 40% chance a condition uses an external market feature (funding, basis, flow)
+    - 60% chance of 1-2 conditions for trade frequency
     """
-    # Random entry conditions (1-2, biased toward fewer for more trades)
-    n_conditions = random.choices([1, 2, 3], weights=[3, 4, 2])[0]
+    # External features get extra weight so evolution explores them
+    EXTERNAL_BOOST = [
+        "funding_rate", "funding_rate_extreme", "funding_rate_roc",
+        "cex_dex_basis_bps", "cex_dex_basis_extreme", "cex_dex_basis_roc_4h",
+        "taker_flow_imbalance", "taker_flow_imbalance_4h", "taker_flow_persistence",
+        "funding_basis_divergence", "market_stress_index",
+    ]
+    # Weighted pool: external features appear 2x, regular 1x
+    weighted_indicators = list(INDICATORS) + EXTERNAL_BOOST
+
+    n_conditions = random.choices([1, 2, 3, 4], weights=[2, 4, 3, 1])[0]
     conditions = []
     for _ in range(n_conditions):
-        indicator = random.choice(INDICATORS)
+        indicator = random.choice(weighted_indicators)
         min_val, max_val = get_threshold_range(indicator)
         threshold = random.uniform(min_val, max_val)
         operator = random.choice([">", "<", ">=", "<="])

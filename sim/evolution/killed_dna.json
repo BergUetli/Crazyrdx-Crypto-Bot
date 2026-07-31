@@ -1,6 +1,6 @@
 {
-  "updated_ts": 1785529487.4245162,
-  "n": 733,
+  "updated_ts": 1785529859.75367,
+  "n": 761,
   "entries": {
     "OR::returns_kurtosis_1d|<=|b4+returns_kurtosis_1d|<=|b4+trend_alignment_all|<|b7": {
       "key": "OR::returns_kurtosis_1d|<=|b4+returns_kurtosis_1d|<=|b4+trend_alignment_all|<|b7",
@@ -26498,6 +26498,884 @@
       "last_reason": "RANDOM banned",
       "last_meta": {
         "source": "funnel_1785529387_gen_0_973640.json"
+      }
+    },
+    "AND::taker_buy_roc_1d|<|b2+taker_buy_roc_1d|>=|b2": {
+      "key": "AND::taker_buy_roc_1d|<|b2+taker_buy_roc_1d|>=|b2",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529522.459733,
+      "last_ts": 1785529522.459736,
+      "example_id": "mut_cross_mut_clon_clone_cl_9320_8843",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<",
+          "threshold": 1.6082199021010901,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": ">=",
+          "threshold": 1.4059512634857174,
+          "bin": 2
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_cross_mut_clon_clone_cl_9320_8843"
+      }
+    },
+    "AND::funding_rate_extreme|<|b4+taker_buy_roc_1d|<|b2+taker_buy_roc_1d|>=|b2+taker_buy_roc_1d|>=|b2": {
+      "key": "AND::funding_rate_extreme|<|b4+taker_buy_roc_1d|<|b2+taker_buy_roc_1d|>=|b2+taker_buy_roc_1d|>=|b2",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529522.4863958,
+      "last_ts": 1785529522.4864,
+      "example_id": "mut_cross_clone_cl_clone_cl_3945_4388",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": ">=",
+          "threshold": 1.4059512634857174,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<",
+          "threshold": 1.6082199021010901,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": ">=",
+          "threshold": 1.4059512634857174,
+          "bin": 2
+        },
+        {
+          "indicator": "funding_rate_extreme",
+          "operator": "<",
+          "threshold": 0.0007478833034938199,
+          "bin": 4
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cl_clone_cl_3945_4388"
+      }
+    },
+    "AND::taker_buy_roc_1d|<|b2+taker_buy_roc_1d|<|b2+taker_buy_roc_1d|>=|b0+taker_buy_roc_1d|>=|b2": {
+      "key": "AND::taker_buy_roc_1d|<|b2+taker_buy_roc_1d|<|b2+taker_buy_roc_1d|>=|b0+taker_buy_roc_1d|>=|b2",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529522.513201,
+      "last_ts": 1785529522.5132039,
+      "example_id": "mut_cross_cross_cl_clone_cl_5503_6422",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<",
+          "threshold": 1.6082199021010901,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": ">=",
+          "threshold": 1.4059512634857174,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<",
+          "threshold": 1.6082199021010901,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": ">=",
+          "threshold": 0.4290044002628113,
+          "bin": 0
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cl_clone_cl_5503_6422"
+      }
+    },
+    "AND::taker_buy_roc_1d|>=|b2": {
+      "key": "AND::taker_buy_roc_1d|>=|b2",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529522.5312908,
+      "last_ts": 1785529522.531293,
+      "example_id": "cross_clone_cl_cross_cl_4477",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": ">=",
+          "threshold": 1.4059512634857174,
+          "bin": 2
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_clone_cl_cross_cl_4477"
+      }
+    },
+    "AND::taker_buy_roc_1d|<|b2+taker_buy_roc_1d|<|b2+taker_buy_roc_1d|<=|b2": {
+      "key": "AND::taker_buy_roc_1d|<|b2+taker_buy_roc_1d|<|b2+taker_buy_roc_1d|<=|b2",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529522.5512,
+      "last_ts": 1785529522.551202,
+      "example_id": "mut_cross_cross_cl_clone_mu_5709_3230",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<",
+          "threshold": 1.6082199021010901,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<=",
+          "threshold": 1.4059512634857174,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<",
+          "threshold": 1.6082199021010901,
+          "bin": 2
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cl_clone_mu_5709_3230"
+      }
+    },
+    "TFT::taker_buy_sma_ratio|<=|b3+volume_confirmation_1h_4h|>=|b6": {
+      "key": "TFT::taker_buy_sma_ratio|<=|b3+volume_confirmation_1h_4h|>=|b6",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529584.5812411,
+      "last_ts": 1785529584.581244,
+      "example_id": "cross_clone_cr_clone_cl_8477",
+      "logic": "TFT",
+      "conditions": [
+        {
+          "indicator": "volume_confirmation_1h_4h",
+          "operator": ">=",
+          "threshold": 3.9707920185307675,
+          "bin": 6
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": "<=",
+          "threshold": 1.951875209631465,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_clone_cr_clone_cl_8477"
+      }
+    },
+    "AND::taker_buy_sma_ratio|<=|b3+taker_buy_sma_ratio|<=|b3+volume_confirmation_1h_4h|>=|b6+volume_confirmation_1h_4h|>=|b6": {
+      "key": "AND::taker_buy_sma_ratio|<=|b3+taker_buy_sma_ratio|<=|b3+volume_confirmation_1h_4h|>=|b6+volume_confirmation_1h_4h|>=|b6",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529584.599524,
+      "last_ts": 1785529584.599527,
+      "example_id": "cross_clone_cl_clone_cr_1477",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "volume_confirmation_1h_4h",
+          "operator": ">=",
+          "threshold": 3.9707920185307675,
+          "bin": 6
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": "<=",
+          "threshold": 1.951875209631465,
+          "bin": 3
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": "<=",
+          "threshold": 1.951875209631465,
+          "bin": 3
+        },
+        {
+          "indicator": "volume_confirmation_1h_4h",
+          "operator": ">=",
+          "threshold": 3.9707920185307675,
+          "bin": 6
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_clone_cl_clone_cr_1477"
+      }
+    },
+    "TFT::volume_confirmation_1h_4h|>=|b6": {
+      "key": "TFT::volume_confirmation_1h_4h|>=|b6",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529584.650518,
+      "last_ts": 1785529584.65052,
+      "example_id": "clone_cross_clone_cr_clone_cl_3546_1204",
+      "logic": "TFT",
+      "conditions": [
+        {
+          "indicator": "volume_confirmation_1h_4h",
+          "operator": ">=",
+          "threshold": 3.9707920185307675,
+          "bin": 6
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "clone_cross_clone_cr_clone_cl_3546_1204"
+      }
+    },
+    "OR::volume_confirmation_1h_4h|>=|b6": {
+      "key": "OR::volume_confirmation_1h_4h|>=|b6",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529584.671648,
+      "last_ts": 1785529584.67165,
+      "example_id": "mut_cross_cross_cl_clone_cl_6706_6395",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "volume_confirmation_1h_4h",
+          "operator": ">=",
+          "threshold": 3.9707920185307675,
+          "bin": 6
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cl_clone_cl_6706_6395"
+      }
+    },
+    "AND::price_roc_1w|>=|b0+trend_alignment_4h_1d|<=|b2": {
+      "key": "AND::price_roc_1w|>=|b0+trend_alignment_4h_1d|<=|b2",
+      "strikes": 1,
+      "reasons": {
+        "walk_forward": 1
+      },
+      "first_ts": 1785529674.378168,
+      "last_ts": 1785529674.378171,
+      "example_id": "mut_cross_cross_cl_clone_cr_4231_2658",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": ">=",
+          "threshold": 27.89531857391575,
+          "bin": 0
+        },
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<=",
+          "threshold": -0.2506529656244736,
+          "bin": 2
+        }
+      ],
+      "last_reason": "walk_forward",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cl_clone_cr_4231_2658"
+      }
+    },
+    "AND::trend_alignment_1h_1d|<|b3+trend_alignment_4h_1d|<=|b2": {
+      "key": "AND::trend_alignment_1h_1d|<|b3+trend_alignment_4h_1d|<=|b2",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529674.397804,
+      "last_ts": 1785529674.3978062,
+      "example_id": "clone_cross_clone_cl_mut_clon_1305_5601",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_1h_1d",
+          "operator": "<",
+          "threshold": -0.18991974671613643,
+          "bin": 3
+        },
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<=",
+          "threshold": -0.2506529656244736,
+          "bin": 2
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "clone_cross_clone_cl_mut_clon_1305_5601"
+      }
+    },
+    "AND::trend_alignment_4h_1d|<=|b2": {
+      "key": "AND::trend_alignment_4h_1d|<=|b2",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529674.4267678,
+      "last_ts": 1785529674.426771,
+      "example_id": "mut_cross_clone_cl_clone_mu_6906_9316",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<=",
+          "threshold": -0.2506529656244736,
+          "bin": 2
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cl_clone_mu_6906_9316"
+      }
+    },
+    "AND::price_roc_1w|>=|b0": {
+      "key": "AND::price_roc_1w|>=|b0",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529674.45531,
+      "last_ts": 1785529674.455313,
+      "example_id": "cross_clone_cr_cross_cr_9389",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": ">=",
+          "threshold": 27.89531857391575,
+          "bin": 0
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "cross_clone_cr_cross_cr_9389"
+      }
+    },
+    "OR::trend_alignment_4h_1d|>|b7+upper_wick_pct|>|b6": {
+      "key": "OR::trend_alignment_4h_1d|>|b7+upper_wick_pct|>|b6",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529674.47185,
+      "last_ts": 1785529674.471853,
+      "example_id": "mut_clone_clone_clone_mut_cross_cross_cl_clone_cr_4231_2658_3532_6560_7425_6689",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": ">",
+          "threshold": 0.8018523073235522,
+          "bin": 7
+        },
+        {
+          "indicator": "upper_wick_pct",
+          "operator": ">",
+          "threshold": 43.10097879544692,
+          "bin": 6
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "mut_clone_clone_clone_mut_cross_cross_cl_clone_cr_4231_2658_3532_6560_7425_6689"
+      }
+    },
+    "AND::trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4": {
+      "key": "AND::trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529706.833298,
+      "last_ts": 1785529706.833302,
+      "example_id": "cross_clone_cl_clone_cl_1492",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        },
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "cross_clone_cl_clone_cl_1492"
+      }
+    },
+    "OR::trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4": {
+      "key": "OR::trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529706.862693,
+      "last_ts": 1785529706.862697,
+      "example_id": "mut_clone_cross_clone_cr_clone_cl_4153_8900_5554",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        },
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        },
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_clone_cross_clone_cr_clone_cl_4153_8900_5554"
+      }
+    },
+    "OR::taker_flow_imbalance|<|b3+trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4": {
+      "key": "OR::taker_flow_imbalance|<|b3+trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4+trend_alignment_4h_1d|<|b4",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1785529706.900139,
+      "last_ts": 1785529706.900144,
+      "example_id": "cross_clone_cr_clone_mu_9181",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        },
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        },
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": "<",
+          "threshold": -0.22559854913132327,
+          "bin": 3
+        },
+        {
+          "indicator": "trend_alignment_4h_1d",
+          "operator": "<",
+          "threshold": 0.09196252652882664,
+          "bin": 4
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "cross_clone_cr_clone_mu_9181"
+      }
+    },
+    "AND::price_roc_1w|>|b0+price_roc_1w|>|b6": {
+      "key": "AND::price_roc_1w|>|b0+price_roc_1w|>|b6",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529784.84924,
+      "last_ts": 1785529784.8492422,
+      "example_id": "cross_clone_cl_clone_mu_1371",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "price_roc_1w",
+          "operator": ">",
+          "threshold": 174.5593953033174,
+          "bin": 6
+        },
+        {
+          "indicator": "price_roc_1w",
+          "operator": ">",
+          "threshold": 7.055435141080489,
+          "bin": 0
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_clone_cl_clone_mu_1371"
+      }
+    },
+    "AND::taker_flow_imbalance|<=|b4+taker_flow_imbalance|>|b3+taker_flow_imbalance|>|b3+taker_flow_imbalance|>|b3": {
+      "key": "AND::taker_flow_imbalance|<=|b4+taker_flow_imbalance|>|b3+taker_flow_imbalance|>|b3+taker_flow_imbalance|>|b3",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529828.493245,
+      "last_ts": 1785529828.4932501,
+      "example_id": "mut_clone_clone_clone_clone_clone_cross_mut_clon_cross_cr_4415_2279_5954_7312_5922_5317_3746",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": "<=",
+          "threshold": 0.13370614820255566,
+          "bin": 4
+        },
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">",
+          "threshold": -0.03831854060368012,
+          "bin": 3
+        },
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">",
+          "threshold": -0.03831854060368012,
+          "bin": 3
+        },
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">",
+          "threshold": -0.03831854060368012,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_clone_clone_clone_clone_clone_cross_mut_clon_cross_cr_4415_2279_5954_7312_5922_5317_3746"
+      }
+    },
+    "AND::is_weekend|<|b4+taker_flow_imbalance|<=|b4+taker_flow_imbalance|>|b3": {
+      "key": "AND::is_weekend|<|b4+taker_flow_imbalance|<=|b4+taker_flow_imbalance|>|b3",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529828.511729,
+      "last_ts": 1785529828.511733,
+      "example_id": "mut_cross_mut_cros_clone_cl_6000_8905",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": "<=",
+          "threshold": 0.12086810843890206,
+          "bin": 4
+        },
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">",
+          "threshold": -0.03831854060368012,
+          "bin": 3
+        },
+        {
+          "indicator": "is_weekend",
+          "operator": "<",
+          "threshold": 50.84089982160851,
+          "bin": 4
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_cross_mut_cros_clone_cl_6000_8905"
+      }
+    },
+    "OR::taker_flow_imbalance|>|b4": {
+      "key": "OR::taker_flow_imbalance|>|b4",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529828.527961,
+      "last_ts": 1785529828.5279639,
+      "example_id": "mut_cross_clone_cl_cross_cr_2364_4433",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">",
+          "threshold": 0.13370614820255566,
+          "bin": 4
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cl_cross_cr_2364_4433"
+      }
+    },
+    "OR::taker_flow_imbalance|<=|b7+taker_flow_imbalance|>|b3": {
+      "key": "OR::taker_flow_imbalance|<=|b7+taker_flow_imbalance|>|b3",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529828.545791,
+      "last_ts": 1785529828.545794,
+      "example_id": "mut_cross_clone_cl_cross_cl_5941_9138",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": "<=",
+          "threshold": 0.9650494323052285,
+          "bin": 7
+        },
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">",
+          "threshold": -0.03831854060368012,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cl_cross_cl_5941_9138"
+      }
+    },
+    "AND::taker_flow_imbalance|>|b3": {
+      "key": "AND::taker_flow_imbalance|>|b3",
+      "strikes": 1,
+      "reasons": {
+        "oos": 1
+      },
+      "first_ts": 1785529828.5629592,
+      "last_ts": 1785529828.5629618,
+      "example_id": "cross_clone_cl_clone_cl_3827",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">",
+          "threshold": -0.03831854060368012,
+          "bin": 3
+        }
+      ],
+      "last_reason": "oos",
+      "last_meta": {
+        "genome_id": "cross_clone_cl_clone_cl_3827"
+      }
+    },
+    "OR::lower_wick_pct|<=|b0": {
+      "key": "OR::lower_wick_pct|<=|b0",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529859.688308,
+      "last_ts": 1785529859.68831,
+      "example_id": "mut_cross_cross_cl_clone_cr_9056_2413",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<=",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cl_clone_cr_9056_2413"
+      }
+    },
+    "AND::lower_wick_pct|<|b0+lower_wick_pct|<=|b0+taker_buy_roc_1d|<=|b7": {
+      "key": "AND::lower_wick_pct|<|b0+lower_wick_pct|<=|b0+taker_buy_roc_1d|<=|b7",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529859.70354,
+      "last_ts": 1785529859.703543,
+      "example_id": "clone_cross_mut_clon_clone_cl_2083_7268",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<=",
+          "threshold": 4.959829565709406,
+          "bin": 7
+        },
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<=",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "clone_cross_mut_clon_clone_cl_2083_7268"
+      }
+    },
+    "AND::lower_wick_pct|<|b0+lower_wick_pct|<|b2+lower_wick_pct|<|b7+lower_wick_pct|<=|b0": {
+      "key": "AND::lower_wick_pct|<|b0+lower_wick_pct|<|b2+lower_wick_pct|<|b7+lower_wick_pct|<=|b0",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529859.718796,
+      "last_ts": 1785529859.718799,
+      "example_id": "mut_cross_cross_cl_clone_cr_4660_5622",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<=",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        },
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        },
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<",
+          "threshold": 17.21014372225646,
+          "bin": 2
+        },
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<",
+          "threshold": 46.415657280417,
+          "bin": 7
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cl_clone_cr_4660_5622"
+      }
+    },
+    "OR::lower_wick_pct|<|b0+lower_wick_pct|<=|b0+taker_buy_roc_1d|<=|b7": {
+      "key": "OR::lower_wick_pct|<|b0+lower_wick_pct|<=|b0+taker_buy_roc_1d|<=|b7",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529859.736347,
+      "last_ts": 1785529859.73635,
+      "example_id": "cross_cross_cr_mut_cros_3667",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<=",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": "<=",
+          "threshold": 4.959829565709406,
+          "bin": 7
+        },
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "cross_cross_cr_mut_cros_3667"
+      }
+    },
+    "OR::lower_wick_pct|<|b0+lower_wick_pct|<|b0+lower_wick_pct|<=|b0+volume_lag_1|>=|b4": {
+      "key": "OR::lower_wick_pct|<|b0+lower_wick_pct|<|b0+lower_wick_pct|<=|b0+volume_lag_1|>=|b4",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1785529859.7536561,
+      "last_ts": 1785529859.7536588,
+      "example_id": "cross_clone_cr_cross_ge_2233",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<=",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        },
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        },
+        {
+          "indicator": "volume_lag_1",
+          "operator": ">=",
+          "threshold": 2.881899826379271,
+          "bin": 4
+        },
+        {
+          "indicator": "lower_wick_pct",
+          "operator": "<",
+          "threshold": 1.16325628283527,
+          "bin": 0
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "cross_clone_cr_cross_ge_2233"
       }
     }
   }
