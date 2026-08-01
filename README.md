@@ -38,6 +38,7 @@ The bot is broken into clear layers:
 * **Evaluation cache:** structurally identical strategies are backtested once, not repeatedly.
 * **Champion warm-starting:** each cycle seeds part of its population from past champions instead of restarting from pure noise.
 * **Test suite:** `python3 sim/test_improvements.py` verifies the engine end-to-end on synthetic data (no market data or API needed).
+* **Vintage forward ledger:** every cycle's champion is frozen and later scored only on candles that arrived after it was created, as a skill percentile vs random strategies frozen the same day. This is the unfakeable "is it getting smarter?" curve (dashboard Chart D).
 
 See [CHANGELOG.md](CHANGELOG.md) for the full list of fixes and improvements.
 

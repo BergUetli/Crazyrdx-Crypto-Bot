@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-01 (later) — Vintage forward ledger: the honest "is it getting smarter?" measure
+
+- **New `sim/evolution/vintage_ledger.py`.** Every cycle's best genome is
+  frozen ("vintage") with the timestamp of the last candle it ever saw. As new
+  candles arrive, every vintage is re-backtested ONLY on data newer than its
+  freeze point — overfitting cannot help a frozen strategy on candles that did
+  not exist when it was frozen, so the trend across vintages is a true
+  learning curve. Once per day a control cohort is frozen too: 20 random
+  genomes + buy-and-hold + SMA 5/20 cross. Champions are reported as a
+  **skill percentile vs same-day randoms on the same future data**
+  (regime-proof). State lives in `sim/data/vintage_ledger.db` (gitignored).
+- **Runner integration** (`run_broad_evolution.py`): after each cycle the
+  champion is frozen and all vintages are forward-scored; failures never kill
+  the search loop. Features are also **reloaded from the DB every cycle**, so
+  a long-running process now picks up newly downloaded candles (previously it
+  ran forever on the data loaded at startup).
+- **Dashboard Chart D** ("Forward ledger — the real proof"): weekly champion
+  skill percentile vs randoms, with a SMARTER / FLAT / WEAKER / **NO EDGE
+  YET** verdict. "NO EDGE YET" fires when champions perform like randoms on
+  unseen data — the honest signal to invest in new features rather than more
+  search. Expect first points ~3 days after deploy, a trustworthy trend after
+  ~4 weeks.
+- Tests: suite extended to 42 checks (`sim/test_improvements.py` section 9)
+  covering freeze/dedupe, forward scoring, idempotent re-scoring, percentile
+  math, weekly cohort summary, and dashboard rendering.
+
 ## 2026-08-01 — Engine audit: bug fixes, calibration, parallel search, learning-curve dashboard
 
 Full audit and upgrade of the evolution engine. All changes verified by the new

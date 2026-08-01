@@ -87,6 +87,15 @@ def main():
             break
 
         cycle += 1
+        # Reload features each cycle so a long-running process picks up new
+        # candles (also feeds the vintage ledger true forward data).
+        if cycle > 1:
+            try:
+                fresh = get_historical_features_1h("SOL/USDC", limit=4000)
+                if len(fresh) >= len(features) and fresh[-1]["ts"] >= features[-1]["ts"]:
+                    features = fresh
+            except Exception as e:
+                print(f"  Feature reload failed (keeping previous): {e}")
         arch = get_archive()
         write_activity({
             "phase": "cycle_start",
@@ -195,6 +204,20 @@ def main():
             (SIM / "evolution" / "last_promoted.json").write_text(
                 json.dumps(prom[0], indent=2, default=str)
             )
+
+        # Vintage ledger: freeze this cycle's champion + daily control cohort,
+        # then forward-score every frozen strategy on candles newer than its
+        # freeze point. Failures here must never kill the search loop.
+        try:
+            from evolution.vintage_ledger import freeze_cycle, score_vintages
+            vstat = freeze_cycle(best, features)
+            n_scored = score_vintages(features, verbose=True)
+            print(
+                f"  [vintage] champion_frozen={vstat['frozen_champion']} "
+                f"controls_frozen={vstat['frozen_controls']} scored={n_scored}"
+            )
+        except Exception as e:
+            print(f"  [vintage] ledger step failed: {e}")
 
         write_activity(
             {

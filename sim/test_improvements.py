@@ -372,6 +372,61 @@ def test_funnel(features, best):
     print(f"      verdict={out.get('verdict')} failed_at={out.get('failed_at')}")
 
 
+def test_vintage_ledger(features, tmp: Path):
+    print("\n[9] vintage forward ledger")
+    import evolution.vintage_ledger as vl
+    from evolution.genome import random_genome
+    random.seed(21)
+    old_db, old_gap = vl.LEDGER_DB, vl.RANDOM_COHORT_MIN_GAP_S
+    try:
+        vl.LEDGER_DB = tmp / "vintage_ledger.db"
+        vl.RANDOM_COHORT_MIN_GAP_S = 0  # allow a control cohort per freeze in test
+
+        champ = random_genome()
+        st = vl.freeze_cycle(champ, features[:800])
+        check("champion + controls frozen", st["frozen_champion"]
+              and st["frozen_controls"] == vl.RANDOM_COHORT_SIZE + 2, str(st))
+        st2 = vl.freeze_cycle(champ, features[:800])
+        check("identical champion not re-frozen", not st2["frozen_champion"])
+
+        # More vintages at later freeze points (distinct champions, ~weekly)
+        for cut in (200, 400, 600, 1000):
+            vl.freeze_cycle(random_genome(), features[:cut])
+
+        n = vl.score_vintages(features)
+        check(f"forward-scored all eligible vintages (n={n})", n >= 25)
+
+        summ = vl.ledger_summary()
+        check("summary ok with weekly cohorts", summ.get("ok")
+              and summ.get("n_weeks", 0) >= 4, str(summ.get("reason")))
+        pcts = [c["med_pct"] for c in summ.get("cohorts", [])]
+        check("percentiles in [0,100]", all(0 <= p <= 100 for p in pcts))
+        check("verdict produced", summ.get("verdict") in
+              ("SMARTER", "WEAKER", "FLAT", "NO EDGE YET", "TOO EARLY"),
+              str(summ.get("verdict")))
+        check("percentile math", vl._percentile_of(5.0, [1, 2, 3, 4]) == 100.0
+              and vl._percentile_of(0.0, [1, 2, 3, 4]) == 0.0
+              and abs(vl._percentile_of(2.5, [1, 2, 3, 4]) - 50.0) < 1e-9)
+
+        # Scoring is idempotent (re-run replaces, does not duplicate)
+        n2 = vl.score_vintages(features)
+        summ2 = vl.ledger_summary()
+        check("re-scoring idempotent", n2 == n
+              and len(summ2["cohorts"]) == len(summ["cohorts"]))
+
+        # Dashboard integration renders
+        import dashboard as dbmod
+        html = dbmod.vintage_html_block({"vintage": summ})
+        check("dashboard vintage block renders",
+              "Chart D" in html and summ["verdict"] in html)
+        html_empty = dbmod.vintage_html_block({"vintage": {"ok": False, "reason": "x"}})
+        check("dashboard vintage block handles empty ledger",
+              "Forward ledger" in html_empty)
+        return summ
+    finally:
+        vl.LEDGER_DB, vl.RANDOM_COHORT_MIN_GAP_S = old_db, old_gap
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -388,6 +443,7 @@ def main():
         best, _ = test_e2e(features, n_workers=4)
         test_e2e(features, n_workers=1)
         test_funnel(features, best)
+        test_vintage_ledger(features, Path(td))
 
     print(f"\n{'='*50}\nRESULT: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

@@ -430,14 +430,98 @@ def gate_depth_chart(depths: list[int], w: int = 720, h: int = 220) -> str:
 </svg>"""
 
 
+def vintage_chart(cohorts: list[dict], w: int = 720, h: int = 220) -> str:
+    """Weekly champion skill percentile vs same-day random strategies."""
+    if not cohorts:
+        return ""
+    ml, mr, mt, mb = 40, 10, 14, 34
+    pw, ph = w - ml - mr, h - mt - mb
+    n = len(cohorts)
+    xs = [ml + (pw / max(n - 1, 1)) * i if n > 1 else ml + pw / 2 for i in range(n)]
+
+    def y_of(pct: float) -> float:
+        return mt + ph - (max(0.0, min(100.0, pct)) / 100.0) * ph
+
+    pts = " ".join(f"{x:.1f},{y_of(c['med_pct']):.1f}" for x, c in zip(xs, cohorts))
+    dots = "".join(
+        f"<circle cx='{x:.1f}' cy='{y_of(c['med_pct']):.1f}' r='4' "
+        f"fill='{'#3ddc97' if c['med_pct'] >= 60 else ('#f5a623' if c['med_pct'] >= 45 else '#e85d5d')}'>"
+        f"<title>{c['week']}: beats {c['med_pct']:.0f}% of randoms "
+        f"(champ ${c['med_champ_pnl30']:.2f}/30d vs random ${c['med_rand_pnl30']:.2f}/30d, "
+        f"{c['n']} champions)</title></circle>"
+        for x, c in zip(xs, cohorts)
+    )
+    grid = []
+    for lvl in (0, 25, 50, 75, 100):
+        y = y_of(lvl)
+        dash = "stroke-dasharray='4 4' stroke='#8b9bb4'" if lvl == 50 else "stroke='#243041'"
+        grid.append(
+            f"<line x1='{ml}' y1='{y:.1f}' x2='{w - mr}' y2='{y:.1f}' {dash} stroke-width='1'/>"
+            f"<text x='{ml - 6}' y='{y + 4:.1f}' fill='#8b9bb4' font-size='11' "
+            f"text-anchor='end'>{lvl}</text>"
+        )
+    labels = ""
+    if n >= 1:
+        labels = (
+            f"<text x='{ml}' y='{h - 8}' fill='#8b9bb4' font-size='11'>{cohorts[0]['week']}</text>"
+            f"<text x='{w - mr}' y='{h - 8}' fill='#8b9bb4' font-size='11' "
+            f"text-anchor='end'>{cohorts[-1]['week']}</text>"
+        )
+    return f"""
+<svg viewBox="0 0 {w} {h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#0f1419;border-radius:8px">
+  {''.join(grid)}
+  <text x="{w - mr}" y="{y_of(50) - 6:.1f}" fill="#8b9bb4" font-size="11" text-anchor="end">50 = no better than random</text>
+  <polyline points="{pts}" fill="none" stroke="#58a6ff" stroke-width="2"/>
+  {dots}
+  {labels}
+</svg>"""
+
+
+def vintage_html_block(s: dict) -> str:
+    vs = s.get("vintage") or {}
+    if not vs.get("ok"):
+        reason = vs.get("reason") or "not started yet"
+        return f"""
+    <div class="note" style="margin-top:12px">
+      <b>Forward ledger (the real proof):</b> every cycle's champion is frozen and
+      later re-tested only on candles that arrived AFTER it was created — overfitting
+      cannot help there. Status: <b>{reason}</b>. First points appear ~3 days after
+      freezing; a trustworthy trend needs ~4 weeks.
+    </div>"""
+    badge = {
+        "SMARTER": "ok", "WEAKER": "bad", "FLAT": "warn",
+        "NO EDGE YET": "bad", "TOO EARLY": "warn",
+    }.get(vs.get("verdict"), "warn")
+    chart = vintage_chart(vs.get("cohorts") or [])
+    return f"""
+    <div style="margin-top:14px">
+      <div class="row between">
+        <b>Forward ledger — the real proof</b>
+        <span class="badge {badge}">{vs.get('verdict')}</span>
+      </div>
+      <p style="margin-top:6px">{vs.get('verdict_text')}</p>
+      <div class="note" style="margin-bottom:8px">
+        <b>Chart D — frozen champions on unseen future data:</b> each dot is a week of
+        frozen champions, scored ONLY on candles that arrived after they were frozen,
+        as a percentile vs 20 random strategies frozen the same day (regime-proof).
+        Above the dashed 50-line = real skill. Rising = the engine is genuinely
+        getting smarter. Flat near 50 for months = no persistent edge with the
+        current features.
+      </div>
+      {chart}
+    </div>"""
+
+
 def learning_html(s: dict) -> str:
     ls = s.get("learning") or {}
+    vblock = vintage_html_block(s)
     if not ls.get("ok"):
         return f"""
   <div class="card">
-    <h2>4. Is the bot getting smarter? <span class="section-hint">exam progress over time</span></h2>
+    <h2>4. Is the bot getting smarter? <span class="section-hint">exam progress + forward proof</span></h2>
     <p class="lead">Too early to tell — only {ls.get('n', 0)} finished searches ran the strict exam so far.</p>
     <p class="muted">This section fills in once enough search jobs have been through the funnel.</p>
+    {vblock}
   </div>"""
 
     badge = {"SMARTER": "ok", "WEAKER": "bad", "FLAT": "warn"}.get(ls.get("direction"), "warn")
@@ -446,11 +530,12 @@ def learning_html(s: dict) -> str:
     return f"""
   <div class="card">
     <div class="row between">
-      <h2>4. Is the bot getting smarter? <span class="section-hint">exam progress over time</span></h2>
+      <h2>4. Is the bot getting smarter? <span class="section-hint">exam progress + forward proof</span></h2>
       <span class="badge {badge}">{ls.get('direction')}</span>
     </div>
     <p class="lead">{ls.get('head')}</p>
     {f'<p>{detail}</p>' if detail else ''}
+    {vblock}
     <div class="grid4" style="margin-top:12px">
       <div class="stat">
         <div class="k">Exam gates cleared (typical)</div>
@@ -715,6 +800,11 @@ def collect_status() -> dict:
     recent_sum = summarize_window(recent)
     all_sum = summarize_window(runs[-100:] if runs else [])
     learning = learning_stats([r for r in broad if is_funnel_era(r)][-80:])
+    try:
+        from evolution.vintage_ledger import ledger_summary
+        vintage = ledger_summary()
+    except Exception as e:
+        vintage = {"ok": False, "reason": f"ledger unavailable ({e})"}
 
     # Questionable metrics to surface
     questions = []
@@ -757,6 +847,7 @@ def collect_status() -> dict:
         "all_sum": all_sum,
         "trend": trend,
         "learning": learning,
+        "vintage": vintage,
         "trials_total": int(trials.get("total_trials") or 0),
         "champions": champions,
         "last_promoted": last_promoted,
