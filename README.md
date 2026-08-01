@@ -34,6 +34,21 @@ The bot is broken into clear layers:
 ## ⚡ Engine capabilities (added 2026-08-01)
 
 * **Parallel search:** genome evaluation runs across all CPU cores (persistent worker pool, ~3.5× throughput). Control with `EVOLUTION_WORKERS` (set `1` to force serial).
+* **Vectorized signals:** entry signals are precomputed with numpy for all bars at once and the backtester jumps straight between candidate bars (`FAST_SIGNALS=0` disables). Trade-list equivalence with the legacy path is enforced by the test suite. To measure the real combined speedup on your machine and data:
+  ```bash
+  python3 -c "
+  import sys, time; sys.path.insert(0,'sim')
+  from layer1.historical_feature_engine_1h import get_historical_features_1h
+  from evolution.evaluator import EvolutionEngine
+  f = get_historical_features_1h('SOL/USDC', limit=4000)
+  e = EvolutionEngine(f, population_size=60, n_workers=1)
+  e.initialize_population(); t=time.time(); e.evaluate_population(); s=time.time()-t
+  e2 = EvolutionEngine(f, population_size=60, n_workers=8)
+  e2.initialize_population(); e2.evaluate_population()
+  for g in e2.population: g.backtest_results=None
+  t=time.time(); e2.evaluate_population(); p=time.time()-t; e2.shutdown_pool()
+  print(f'serial {s:.1f}s | parallel {p:.1f}s | speedup {s/p:.1f}x')"
+  ```
 * **Data-calibrated thresholds:** entry-condition thresholds are sampled from the 5th–95th percentile of each indicator's real distribution, recalibrated every cycle.
 * **Evaluation cache:** structurally identical strategies are backtested once, not repeatedly.
 * **Champion warm-starting:** each cycle seeds part of its population from past champions instead of restarting from pure noise.

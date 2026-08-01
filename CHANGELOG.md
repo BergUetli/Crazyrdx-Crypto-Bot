@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-01 (third pass) — Vectorized signal engine
+
+- **New `sim/layer1/fast_signals.py`**: entry signals for every strategy
+  family (AND/OR/MEANREV/BREAKOUT/TREND/TFT, filters, all sizing methods) are
+  precomputed for all bars at once with numpy, then the backtest engine
+  **jumps directly between candidate signal bars** instead of walking every
+  bar in Python. Feature columns are materialized once per data window and
+  cached (LRU). The exit walk also reads numpy price columns instead of
+  crawling dicts, and the vol-targeting window uses plain arithmetic instead
+  of `np.mean` (~5µs/call overhead on tiny lists).
+- **Equivalence-guaranteed**: the test suite proves bit-identical trade lists
+  between the fast and legacy paths across 90 genomes covering every strategy
+  family, sizing method, and exit type (incl. signal_reversal), plus 150
+  full evaluator comparisons with 0 fitness differences. The stochastic
+  RANDOM baseline automatically falls back to the legacy path, as does any
+  genome/feature shape the fast path cannot replicate. Kill switch:
+  `FAST_SIGNALS=0`.
+- **Honest numbers** (synthetic 4000-bar data): ~1.4× single-thread on
+  trade-heavy populations (per-trade exit work dominates there), larger on
+  sparse-signal genomes where per-bar scanning used to dominate. Combined
+  with the worker pool: roughly **5×+ total vs the original serial engine**;
+  real-data results on the mini will differ — measure with the benchmark in
+  the README.
+- Suite is now 46 checks.
+
 ## 2026-08-01 (later) — Vintage forward ledger: the honest "is it getting smarter?" measure
 
 - **New `sim/evolution/vintage_ledger.py`.** Every cycle's best genome is
