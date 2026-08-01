@@ -372,6 +372,145 @@ def test_funnel(features, best):
     print(f"      verdict={out.get('verdict')} failed_at={out.get('failed_at')}")
 
 
+def test_vintage_ledger(features, tmp: Path):
+    print("\n[9] vintage forward ledger")
+    import evolution.vintage_ledger as vl
+    from evolution.genome import random_genome
+    random.seed(21)
+    old_db, old_gap = vl.LEDGER_DB, vl.RANDOM_COHORT_MIN_GAP_S
+    try:
+        vl.LEDGER_DB = tmp / "vintage_ledger.db"
+        vl.RANDOM_COHORT_MIN_GAP_S = 0  # allow a control cohort per freeze in test
+
+        champ = random_genome()
+        st = vl.freeze_cycle(champ, features[:800])
+        check("champion + controls frozen", st["frozen_champion"]
+              and st["frozen_controls"] == vl.RANDOM_COHORT_SIZE + 2, str(st))
+        st2 = vl.freeze_cycle(champ, features[:800])
+        check("identical champion not re-frozen", not st2["frozen_champion"])
+
+        # More vintages at later freeze points (distinct champions, ~weekly)
+        for cut in (200, 400, 600, 1000):
+            vl.freeze_cycle(random_genome(), features[:cut])
+
+        n = vl.score_vintages(features)
+        check(f"forward-scored all eligible vintages (n={n})", n >= 25)
+
+        summ = vl.ledger_summary()
+        check("summary ok with weekly cohorts", summ.get("ok")
+              and summ.get("n_weeks", 0) >= 4, str(summ.get("reason")))
+        pcts = [c["med_pct"] for c in summ.get("cohorts", [])]
+        check("percentiles in [0,100]", all(0 <= p <= 100 for p in pcts))
+        check("verdict produced", summ.get("verdict") in
+              ("SMARTER", "WEAKER", "FLAT", "NO EDGE YET", "TOO EARLY"),
+              str(summ.get("verdict")))
+        check("percentile math", vl._percentile_of(5.0, [1, 2, 3, 4]) == 100.0
+              and vl._percentile_of(0.0, [1, 2, 3, 4]) == 0.0
+              and abs(vl._percentile_of(2.5, [1, 2, 3, 4]) - 50.0) < 1e-9)
+
+        # Scoring is idempotent (re-run replaces, does not duplicate)
+        n2 = vl.score_vintages(features)
+        summ2 = vl.ledger_summary()
+        check("re-scoring idempotent", n2 == n
+              and len(summ2["cohorts"]) == len(summ["cohorts"]))
+
+        # Dashboard integration renders
+        import dashboard as dbmod
+        html = dbmod.vintage_html_block({"vintage": summ})
+        check("dashboard vintage block renders",
+              "Chart D" in html and summ["verdict"] in html)
+        html_empty = dbmod.vintage_html_block({"vintage": {"ok": False, "reason": "x"}})
+        check("dashboard vintage block handles empty ledger",
+              "Forward ledger" in html_empty)
+        return summ
+    finally:
+        vl.LEDGER_DB, vl.RANDOM_COHORT_MIN_GAP_S = old_db, old_gap
+
+
+def test_fast_signals_equivalence(features):
+    print("\n[10] vectorized signals: exact equivalence with legacy path")
+    from evolution.evaluator import GenomeEvaluator
+    from evolution.genome import random_genome, ExitRule
+    from layer1.fast_signals import build_array_signal_fn
+    from layer1.backtest_engine import BacktestEngine
+
+    random.seed(31)
+    ev = GenomeEvaluator(features, augment=False)
+    feats = ev.features
+
+    genomes = []
+    for logic in ("AND", "OR", "MEANREV", "BREAKOUT", "TREND", "TFT"):
+        for _ in range(15):
+            g = random_genome()
+            g.entry_logic = logic
+            genomes.append(g)
+    # Force coverage of every sizing method and reversal exits
+    for i, method in enumerate(("fixed", "kelly", "volatility_scaled", "equal_weight")):
+        genomes[i].sizing_method = method
+    for g in genomes[:10]:
+        g.exit_rules.append(ExitRule("signal_reversal", 0.7))
+
+    mismatches = 0
+    compared_trades = 0
+    t_legacy = t_fast = 0.0
+    engine_slow = BacktestEngine(fast_columns=False)  # dict exits + legacy signals
+    engine_fast = BacktestEngine(fast_columns=True)   # column exits + fast signals
+    for g in genomes:
+        t0 = time.time()
+        r_old = engine_slow.run_backtest("legacy", "SOL/USDC", feats,
+                                         ev._build_signal_fn(g), exit_rules=g.exit_rules)
+        t_legacy += time.time() - t0
+        fast_fn = build_array_signal_fn(g, feats)
+        assert fast_fn is not None
+        t0 = time.time()
+        r_new = engine_fast.run_backtest("fast", "SOL/USDC", feats,
+                                         fast_fn, exit_rules=g.exit_rules)
+        t_fast += time.time() - t0
+
+        same = (r_old.total_trades == r_new.total_trades
+                and abs(r_old.total_pnl - r_new.total_pnl) < 1e-9)
+        if same:
+            for a, b in zip(r_old.trades, r_new.trades):
+                compared_trades += 1
+                if (a.entry_ts != b.entry_ts or a.exit_ts != b.exit_ts
+                        or abs(a.entry_price - b.entry_price) > 1e-9
+                        or abs(a.exit_price - b.exit_price) > 1e-9
+                        or abs(a.size_usd - b.size_usd) > 1e-9):
+                    same = False
+                    break
+        if not same:
+            mismatches += 1
+            print(f"    MISMATCH {g.entry_logic} {g.genome_id}: "
+                  f"trades {r_old.total_trades} vs {r_new.total_trades}, "
+                  f"pnl {r_old.total_pnl:.6f} vs {r_new.total_pnl:.6f}")
+
+    check(f"all {len(genomes)} genomes produce identical trades "
+          f"({compared_trades} trades compared)", mismatches == 0,
+          f"{mismatches} mismatches")
+    speed = t_legacy / max(t_fast, 1e-9)
+    print(f"      signal-path speedup on this data: {speed:.1f}x "
+          f"(legacy {t_legacy:.2f}s vs fast {t_fast:.2f}s)")
+    check("fast path is not slower", speed > 1.0, f"{speed:.2f}x")
+
+    # RANDOM baseline must decline the fast path (stochastic)
+    g = random_genome()
+    g.entry_logic = "RANDOM"
+    check("RANDOM falls back to legacy path",
+          build_array_signal_fn(g, feats) is None)
+
+    # Kill switch respected inside the evaluator
+    import evolution.evaluator as evmod
+    old_flag = evmod.FAST_SIGNALS_ENABLED
+    try:
+        evmod.FAST_SIGNALS_ENABLED = False
+        g2 = random_genome()
+        g2.entry_logic = "OR"
+        r = ev.evaluate(g2)
+        check("FAST_SIGNALS=0 path still evaluates", "fitness" in r)
+    finally:
+        evmod.FAST_SIGNALS_ENABLED = old_flag
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -382,12 +521,14 @@ def main():
     test_kelly(features)
     test_gap_fills()
     test_limit_query()
+    test_fast_signals_equivalence(features)
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))
         best, _ = test_e2e(features, n_workers=4)
         test_e2e(features, n_workers=1)
         test_funnel(features, best)
+        test_vintage_ledger(features, Path(td))
 
     print(f"\n{'='*50}\nRESULT: {PASS} passed, {FAIL} failed")
     return 1 if FAIL else 0

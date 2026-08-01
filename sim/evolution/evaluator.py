@@ -34,6 +34,10 @@ from success_criteria import (
 
 ACTIVITY_FILE = Path(__file__).resolve().parent.parent / "logs" / "live_activity.json"
 
+# Vectorized signal precomputation (layer1.fast_signals). Equivalence with the
+# legacy per-bar path is enforced by the test suite; FAST_SIGNALS=0 disables.
+FAST_SIGNALS_ENABLED = os.environ.get("FAST_SIGNALS", "1") != "0"
+
 
 def write_activity(state: Dict[str, Any]) -> None:
     try:
@@ -100,6 +104,14 @@ class GenomeEvaluator:
             latency_model=self.latency_model,
         )
         self._current_genome: Optional[StrategyGenome] = None
+        # Stable OOS/IS slices (computed once so the fast-signal column cache
+        # can key on list identity instead of rebuilding per genome).
+        n = len(self.features)
+        self._split = max(100, (2 * n) // 3)
+        self._oos_features = self.features[self._split:]
+        if len(self._oos_features) < 80:
+            self._oos_features = self.features[n // 2:]
+        self._is_features = self.features[: self._split]
 
     def evaluate(self, genome: StrategyGenome) -> Dict[str, Any]:
         """Score one genome for selection."""
@@ -127,11 +139,7 @@ class GenomeEvaluator:
             }
 
         # 3. OOS-only ranking on last third
-        n = len(self.features)
-        split = max(100, (2 * n) // 3)
-        oos_features = self.features[split:]
-        if len(oos_features) < 80:
-            oos_features = self.features[n // 2 :]
+        oos_features = self._oos_features
 
         oos = self._run_raw(genome, oos_features)
         if oos.total_trades < self.MIN_TRADES_OOS:
@@ -140,7 +148,7 @@ class GenomeEvaluator:
             fitness = self._score_result(oos)
             # Consistency: if OOS makes money but IS is a large loss, haircut.
             # If OOS is much weaker than a strong IS, mild haircut (overfit smell).
-            is_features = self.features[:split]
+            is_features = self._is_features
             if len(is_features) >= 80:
                 is_res = self._run_raw(genome, is_features)
                 if is_res.total_trades >= 10:
@@ -193,7 +201,15 @@ class GenomeEvaluator:
                 fee_rate=self.fee_rate,
                 latency_model=self.latency_model,
             )
-        signal_fn = self._build_signal_fn(genome)
+        signal_fn = None
+        if FAST_SIGNALS_ENABLED:
+            try:
+                from layer1.fast_signals import build_array_signal_fn
+                signal_fn = build_array_signal_fn(genome, features)
+            except Exception:
+                signal_fn = None  # any surprise -> proven legacy path
+        if signal_fn is None:
+            signal_fn = self._build_signal_fn(genome)
         return engine.run_backtest(
             strategy_name=genome.genome_id,
             pair="SOL/USDC",

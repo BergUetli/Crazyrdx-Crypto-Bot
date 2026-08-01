@@ -224,12 +224,31 @@ class BacktestEngine:
         latency_model: Optional[LatencyModel] = None,
         max_position_size: float = 0.5,    # max 50% of capital per trade
         min_signal_strength: float = 0.5,
+        fast_columns: bool = True,      # numpy price arrays for the exit walk
     ):
         self.initial_capital = initial_capital
         self.fee_rate = fee_rate
         self.latency_model = latency_model or LatencyModel()
         self.max_position_size = max_position_size
         self.min_signal_strength = min_signal_strength
+        self.fast_columns = fast_columns
+
+    def _price_columns(self, features):
+        """(close, high, low, open) numpy arrays, or None -> dict path.
+
+        Value-identical to the per-bar dict reads (same floats, same
+        high/low/open fallbacks to close); verified by the test suite.
+        """
+        if not self.fast_columns:
+            return None
+        try:
+            from layer1.fast_signals import get_columns
+            cols = get_columns(features)
+            closes = cols["close"]
+            return (closes, cols.get("high", closes), cols.get("low", closes),
+                    cols.get("open", closes))
+        except Exception:
+            return None
 
     def run_backtest(
         self,
@@ -264,6 +283,7 @@ class BacktestEngine:
         bar_hours = self._infer_bar_hours(features, start_idx, end_idx)
         rules = self._normalize_exit_rules(exit_rules, bar_hours=bar_hours)
         cooldown_until = -1
+        px_cols = self._price_columns(features)
 
         # Vol-targeted position sizing: scale inverse to recent volatility.
         # Uses a rolling 20-bar vol window if available; otherwise fixed fraction.
@@ -271,11 +291,35 @@ class BacktestEngine:
         _vol_target = 0.15  # target 15% annualised position vol (modest for $100)
         _vol_min_size = 0.05  # floor: always at least 5% of capital
 
+        # Candidate-jumping: when the signal fn exposes precomputed arrays,
+        # only bars that can actually signal (dir != 0, strength >= min) are
+        # visited — identical trade sequence, ~10x fewer loop iterations.
+        candidates = None
+        sig_arrays = getattr(signal_generator, "arrays", None)
+        if sig_arrays is not None:
+            try:
+                dirs_a, strength_a, _ = sig_arrays
+                cand = np.flatnonzero(dirs_a != 0)
+                cand = cand[
+                    (cand >= start_idx)
+                    & (cand < end_idx - 1)
+                    & (strength_a[cand] >= self.min_signal_strength)
+                ]
+                candidates = cand
+            except Exception:
+                candidates = None
+
         i = start_idx
         while i < end_idx - 1:
             if i <= cooldown_until:
                 i += 1
                 continue
+
+            if candidates is not None:
+                ci = int(np.searchsorted(candidates, i))
+                if ci >= len(candidates):
+                    break
+                i = int(candidates[ci])
 
             signal = signal_generator(features, i)
 
@@ -301,7 +345,11 @@ class BacktestEngine:
                 _vol_window.append(0.02)
             if len(_vol_window) > 20:
                 _vol_window.pop(0)
-            recent_vol = max(float(np.mean(_vol_window)) if _vol_window else 0.02, 0.005)
+            # plain sum/len: np.mean has ~5µs overhead per call on tiny lists
+            recent_vol = max(
+                (sum(_vol_window) / len(_vol_window)) if _vol_window else 0.02,
+                0.005,
+            )
 
             # Size inverse to vol: size = capital * (target / realized_vol)
             vol_scale = min(_vol_target / max(recent_vol, 1e-6), 1.0) if recent_vol > 0 else 1.0
@@ -335,6 +383,7 @@ class BacktestEngine:
                 rules=rules,
                 signal_generator=signal_generator,
                 bar_hours=bar_hours,
+                px_cols=px_cols,
             )
 
             # Calculate P&L
@@ -543,12 +592,15 @@ class BacktestEngine:
         rules: List[Dict[str, Any]],
         signal_generator,
         bar_hours: float = 1.0,
+        px_cols=None,
     ) -> Tuple[int, float]:
         """Walk forward bar-by-bar until an exit rule fires."""
         # Minimum hold: exit search starts at entry_idx + MIN_HOLD_BARS
         start = min(entry_idx + max(1, self.MIN_HOLD_BARS), end_idx - 1)
         last = end_idx - 1
         if start > last:
+            if px_cols is not None:
+                return last, float(px_cols[0][last])
             return last, features[last]["features"]["close"]
 
         # max hold from time_stop (largest if multiple)
@@ -563,13 +615,23 @@ class BacktestEngine:
 
         best_price = exec_price  # peak for longs / trough for shorts
         exit_idx = min(entry_idx + max_hold, last)
-        exit_price = features[exit_idx]["features"]["close"]
+        if px_cols is not None:
+            closes, his, los, ops = px_cols
+            exit_price = float(closes[exit_idx])
+        else:
+            exit_price = features[exit_idx]["features"]["close"]
 
         for j in range(start, min(entry_idx + max_hold, last) + 1):
-            px = features[j]["features"]["close"]
-            hi = features[j]["features"].get("high", px)
-            lo = features[j]["features"].get("low", px)
-            op = features[j]["features"].get("open", px)
+            if px_cols is not None:
+                px = float(closes[j])
+                hi = float(his[j])
+                lo = float(los[j])
+                op = float(ops[j])
+            else:
+                px = features[j]["features"]["close"]
+                hi = features[j]["features"].get("high", px)
+                lo = features[j]["features"].get("low", px)
+                op = features[j]["features"].get("open", px)
 
             # Gap-aware fills: if the bar opens beyond the stop level, a real
             # order fills at the open, not at the (already gapped past) stop.

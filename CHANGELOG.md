@@ -2,6 +2,57 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-01 (third pass) — Vectorized signal engine
+
+- **New `sim/layer1/fast_signals.py`**: entry signals for every strategy
+  family (AND/OR/MEANREV/BREAKOUT/TREND/TFT, filters, all sizing methods) are
+  precomputed for all bars at once with numpy, then the backtest engine
+  **jumps directly between candidate signal bars** instead of walking every
+  bar in Python. Feature columns are materialized once per data window and
+  cached (LRU). The exit walk also reads numpy price columns instead of
+  crawling dicts, and the vol-targeting window uses plain arithmetic instead
+  of `np.mean` (~5µs/call overhead on tiny lists).
+- **Equivalence-guaranteed**: the test suite proves bit-identical trade lists
+  between the fast and legacy paths across 90 genomes covering every strategy
+  family, sizing method, and exit type (incl. signal_reversal), plus 150
+  full evaluator comparisons with 0 fitness differences. The stochastic
+  RANDOM baseline automatically falls back to the legacy path, as does any
+  genome/feature shape the fast path cannot replicate. Kill switch:
+  `FAST_SIGNALS=0`.
+- **Honest numbers** (synthetic 4000-bar data): ~1.4× single-thread on
+  trade-heavy populations (per-trade exit work dominates there), larger on
+  sparse-signal genomes where per-bar scanning used to dominate. Combined
+  with the worker pool: roughly **5×+ total vs the original serial engine**;
+  real-data results on the mini will differ — measure with the benchmark in
+  the README.
+- Suite is now 46 checks.
+
+## 2026-08-01 (later) — Vintage forward ledger: the honest "is it getting smarter?" measure
+
+- **New `sim/evolution/vintage_ledger.py`.** Every cycle's best genome is
+  frozen ("vintage") with the timestamp of the last candle it ever saw. As new
+  candles arrive, every vintage is re-backtested ONLY on data newer than its
+  freeze point — overfitting cannot help a frozen strategy on candles that did
+  not exist when it was frozen, so the trend across vintages is a true
+  learning curve. Once per day a control cohort is frozen too: 20 random
+  genomes + buy-and-hold + SMA 5/20 cross. Champions are reported as a
+  **skill percentile vs same-day randoms on the same future data**
+  (regime-proof). State lives in `sim/data/vintage_ledger.db` (gitignored).
+- **Runner integration** (`run_broad_evolution.py`): after each cycle the
+  champion is frozen and all vintages are forward-scored; failures never kill
+  the search loop. Features are also **reloaded from the DB every cycle**, so
+  a long-running process now picks up newly downloaded candles (previously it
+  ran forever on the data loaded at startup).
+- **Dashboard Chart D** ("Forward ledger — the real proof"): weekly champion
+  skill percentile vs randoms, with a SMARTER / FLAT / WEAKER / **NO EDGE
+  YET** verdict. "NO EDGE YET" fires when champions perform like randoms on
+  unseen data — the honest signal to invest in new features rather than more
+  search. Expect first points ~3 days after deploy, a trustworthy trend after
+  ~4 weeks.
+- Tests: suite extended to 42 checks (`sim/test_improvements.py` section 9)
+  covering freeze/dedupe, forward scoring, idempotent re-scoring, percentile
+  math, weekly cohort summary, and dashboard rendering.
+
 ## 2026-08-01 — Engine audit: bug fixes, calibration, parallel search, learning-curve dashboard
 
 Full audit and upgrade of the evolution engine. All changes verified by the new
