@@ -520,6 +520,8 @@ class EvolutionEngine:
         use_kill_archive: bool = True,
         seed_genomes: Optional[List[StrategyGenome]] = None,
         n_workers: Optional[int] = None,
+        seed_fraction: float = 0.20,
+        mode: str = "explore",
     ):
         self.features = features
         self.population_size = population_size
@@ -531,6 +533,10 @@ class EvolutionEngine:
         self.use_kill_archive = use_kill_archive
         # Warm-start seeds (e.g. past champions) injected into gen-0 population
         self.seed_genomes = list(seed_genomes or [])
+        # Fraction of gen-0 reserved for seeds + neighborhood mutants
+        self.seed_fraction = max(0.0, min(0.95, float(seed_fraction)))
+        # "explore" = broad hunt; "exploit" = dig around known winners
+        self.mode = mode if mode in ("explore", "exploit") else "explore"
 
         self.evaluator = GenomeEvaluator(features)
 
@@ -597,55 +603,101 @@ class EvolutionEngine:
         return mutate(genome, rate)
 
     def initialize_population(self):
-        """Create initial random population, stratified by strategy type.
+        """Create initial population.
 
-        Warm start: past champions (and their mutated variants) are injected
-        first, capped at 20% of the population, so each cycle refines known
-        good regions instead of always restarting from pure noise.
+        Explore mode: small warm-start (seed_fraction, default 20%) + stratified random.
+        Exploit mode: most of the pop is the focus winner(s) and nearby mutants;
+        only a thin random slice keeps a little diversity.
         """
         from evolution.genome import LOGIC_OPS
 
         self.population = []
-        max_seeds = max(0, int(self.population_size * 0.20))
+        max_seeds = max(0, int(self.population_size * self.seed_fraction))
         n_seeded = 0
-        for seed in self.seed_genomes:
-            if n_seeded >= max_seeds:
-                break
-            if self.md_kill_logic(seed):
-                continue
-            base = StrategyGenome.from_dict(seed.to_dict())
-            base.genome_id = f"seed_{seed.genome_id[:24]}_{random.randint(1000, 9999)}"
-            base.backtest_results = None
-            base.fitness = 0.0
-            base.generation = 0
-            self.population.append(base)
-            n_seeded += 1
-            # Two mutated variants per seed to explore its neighborhood
-            for _ in range(2):
+        seeds = list(self.seed_genomes)
+
+        # Exploit: if we have seeds, keep re-mutating around them until the
+        # seed budget is full (not just 1 copy + 2 mutants each).
+        if self.mode == "exploit" and seeds:
+            # Always include exact copies of each focus seed first
+            for seed in seeds:
                 if n_seeded >= max_seeds:
                     break
-                var = self._mutate_genome(base, self.mutation_rate)
+                if self.md_kill_logic(seed):
+                    continue
+                base = StrategyGenome.from_dict(seed.to_dict())
+                base.genome_id = f"focus_{seed.genome_id[:20]}_{random.randint(1000, 9999)}"
+                base.backtest_results = None
+                base.fitness = 0.0
+                base.generation = 0
+                self.population.append(base)
+                n_seeded += 1
+            # Fill rest of seed budget with neighborhood mutants (varying strength)
+            guard = 0
+            while n_seeded < max_seeds and seeds and guard < max_seeds * 8:
+                guard += 1
+                parent = random.choice(seeds)
+                if self.md_kill_logic(parent):
+                    continue
+                # Mix light and heavier pokes around the winner
+                rate = self.mutation_rate if random.random() < 0.5 else min(0.8, self.mutation_rate * 1.5)
+                var = self._mutate_genome(parent, rate)
+                # Occasional second poke for slightly farther neighbors
+                if random.random() < 0.35:
+                    var = self._mutate_genome(var, self.mutation_rate * 0.8)
                 var.generation = 0
+                var.genome_id = f"nbhd_{var.genome_id[:20]}_{random.randint(1000, 9999)}"
+                if self.md_kill_logic(var):
+                    continue
                 self.population.append(var)
                 n_seeded += 1
-        if n_seeded:
-            print(f"  Warm start: seeded {n_seeded} genomes from champions")
-        # Stratified seed so each strategy family gets fair exploration
-        per_type = max(1, self.population_size // max(len(LOGIC_OPS), 1))
-        for logic in LOGIC_OPS:
-            for _ in range(per_type):
-                g = self._fresh_genome(generation=0)
-                g.entry_logic = logic
-                # If assigned logic is killed, reshuffle whole DNA under that logic
-                if self.md_kill_logic(g):
-                    for _try in range(20):
-                        g = self._fresh_genome(generation=0)
-                        g.entry_logic = logic
-                        if not self.md_kill_logic(g):
-                            break
-                self.population.append(g)
-        while len(self.population) < self.population_size:
-            self.population.append(self._fresh_genome(generation=0))
+            print(
+                f"  Exploit warm start: {n_seeded}/{self.population_size} "
+                f"from focus neighborhood ({len(seeds)} parents)"
+            )
+        else:
+            for seed in seeds:
+                if n_seeded >= max_seeds:
+                    break
+                if self.md_kill_logic(seed):
+                    continue
+                base = StrategyGenome.from_dict(seed.to_dict())
+                base.genome_id = f"seed_{seed.genome_id[:24]}_{random.randint(1000, 9999)}"
+                base.backtest_results = None
+                base.fitness = 0.0
+                base.generation = 0
+                self.population.append(base)
+                n_seeded += 1
+                # Two mutated variants per seed to explore its neighborhood
+                for _ in range(2):
+                    if n_seeded >= max_seeds:
+                        break
+                    var = self._mutate_genome(base, self.mutation_rate)
+                    var.generation = 0
+                    self.population.append(var)
+                    n_seeded += 1
+            if n_seeded:
+                print(f"  Warm start: seeded {n_seeded} genomes from champions")
+
+        # Remaining slots: stratified random (thin in exploit mode)
+        remaining = self.population_size - len(self.population)
+        if remaining > 0:
+            per_type = max(1, remaining // max(len(LOGIC_OPS), 1))
+            for logic in LOGIC_OPS:
+                for _ in range(per_type):
+                    if len(self.population) >= self.population_size:
+                        break
+                    g = self._fresh_genome(generation=0)
+                    g.entry_logic = logic
+                    if self.md_kill_logic(g):
+                        for _try in range(20):
+                            g = self._fresh_genome(generation=0)
+                            g.entry_logic = logic
+                            if not self.md_kill_logic(g):
+                                break
+                    self.population.append(g)
+            while len(self.population) < self.population_size:
+                self.population.append(self._fresh_genome(generation=0))
         self.population = self.population[: self.population_size]
 
     def md_kill_logic(self, genome: StrategyGenome) -> bool:

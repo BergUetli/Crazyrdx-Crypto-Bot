@@ -52,16 +52,23 @@ FITNESS_MAX = 250.0
 FITNESS_DISPLAY_CAP = 1000.0  # anything beyond = broken legacy score
 
 # ---------------------------------------------------------------------------
-# Stage 2 — PAPER (first real success)
+# Stage 2 — PAPER (first real success = FORWARD window, not full-history search)
 # ---------------------------------------------------------------------------
+# These bars apply to a ~30-day forward paper run after LAB shortlist.
+# They are NOT lines to draw on the search-score chart.
 PAPER_MIN_DAYS = 30
+# In a 30d forward window, trade count can be lower than full-sample LAB 30.
+# Still require a usable sample; do not set this above typical 30d capacity.
 PAPER_MIN_TRADES = 20
-PAPER_MIN_NET_PNL_USD = 5.0  # +5% on $100
+PAPER_MIN_NET_PNL_USD = 5.0  # +5% on $100 book after fees in the forward window
 PAPER_TARGET_NET_PNL_USD = 10.0  # +10% stretch
 PAPER_MAX_DRAWDOWN = 0.15  # 15% preferred
 PAPER_MAX_DRAWDOWN_HARD = 0.20  # 20% fail
 PAPER_MAX_WEEKLY_LOSS_FRAC = 0.10  # no week worse than -10% without thesis
 PAPER_FEE_STRESS = FEE_RATE_STRESS_MID
+
+# LAB dollar floor used by funnel feasibility (engine): must be profitable on full sample
+LAB_MIN_NET_PNL_USD = 0.01  # essentially > 0 after fees on $100 book
 
 # ---------------------------------------------------------------------------
 # Stage 3 — LIVE micro (only after paper)
@@ -347,28 +354,54 @@ def criteria_public_dict() -> Dict[str, Any]:
         "book_usd": BOOK_USD,
         "fee_rate_base": FEE_RATE_BASE,
         "not_success": list(NOT_SUCCESS),
+        "axes": {
+            "search_score": (
+                "Composite ranking from OOS PnL + trade sample + risk penalties. "
+                "NOT dollars, NOT ending capital, NOT paper-forward ROI."
+            ),
+            "lab_pnl_usd": (
+                f"Full-sample paper P&L on ${BOOK_USD:.0f} book after fees during search/backtest. "
+                "Engine LAB gate is simply > $0 (plus N>=30, DD<=20%, funnel)."
+            ),
+            "paper_forward": (
+                f"Separate ~{PAPER_MIN_DAYS}d forward paper window AFTER shortlist. "
+                f"Target +${PAPER_MIN_NET_PNL_USD:.0f} to +${PAPER_TARGET_NET_PNL_USD:.0f} "
+                f"(+{100*PAPER_MIN_NET_PNL_USD/BOOK_USD:.0f}% to "
+                f"+{100*PAPER_TARGET_NET_PNL_USD/BOOK_USD:.0f}% ROI), "
+                f">={PAPER_MIN_TRADES} trades, DD<={100*PAPER_MAX_DRAWDOWN_HARD:.0f}%."
+            ),
+        },
         "lab": {
             "min_trades_full": LAB_MIN_TRADES_FULL,
             "min_trades_oos": LAB_MIN_TRADES_OOS,
             "min_trades_preferred": LAB_MIN_TRADES_PREFERRED,
+            "min_net_pnl_usd": LAB_MIN_NET_PNL_USD,
             "require_positive_full_pnl": LAB_REQUIRE_POSITIVE_FULL_PNL,
             "require_positive_oos_pnl": LAB_REQUIRE_POSITIVE_OOS_PNL,
             "oos_pnl_ratio_min": LAB_OOS_PNL_RATIO_MIN,
             "max_drawdown": LAB_MAX_DRAWDOWN,
             "wf_majority": LAB_WF_MAJORITY,
-            "meaning": "Interesting on history + strict exam. Not deployable money.",
+            "meaning": (
+                "Interesting on history + strict exam. Not deployable money. "
+                "Full-sample P&L only needs to be >0; large historical P&L is NOT the paper win."
+            ),
         },
         "paper": {
             "min_days": PAPER_MIN_DAYS,
             "min_trades": PAPER_MIN_TRADES,
             "min_net_pnl_usd": PAPER_MIN_NET_PNL_USD,
             "target_net_pnl_usd": PAPER_TARGET_NET_PNL_USD,
+            "min_roi": PAPER_MIN_NET_PNL_USD / BOOK_USD,
+            "target_roi": PAPER_TARGET_NET_PNL_USD / BOOK_USD,
+            "ending_capital_min": BOOK_USD + PAPER_MIN_NET_PNL_USD,
+            "ending_capital_target": BOOK_USD + PAPER_TARGET_NET_PNL_USD,
             "max_drawdown": PAPER_MAX_DRAWDOWN,
             "max_drawdown_hard": PAPER_MAX_DRAWDOWN_HARD,
             "meaning": (
-                f"First real success on ${BOOK_USD:.0f}: "
-                f">={PAPER_MIN_DAYS}d paper, >={PAPER_MIN_TRADES} trades, "
-                f">=+${PAPER_MIN_NET_PNL_USD:.0f}, DD<=${BOOK_USD * PAPER_MAX_DRAWDOWN_HARD:.0f}."
+                f"First real success on ${BOOK_USD:.0f}: forward >={PAPER_MIN_DAYS}d paper, "
+                f">={PAPER_MIN_TRADES} trades, net >={PAPER_MIN_NET_PNL_USD:.0f} "
+                f"(book ends >= ${BOOK_USD + PAPER_MIN_NET_PNL_USD:.0f}), "
+                f"DD<=${BOOK_USD * PAPER_MAX_DRAWDOWN_HARD:.0f}."
             ),
         },
         "live": {
@@ -383,23 +416,27 @@ def criteria_public_dict() -> Dict[str, Any]:
             "meaning": "Tiny real sleeve only after paper pass. Kill at 20% DD.",
         },
         "single_number_target": (
-            f"Success on ${BOOK_USD:.0f} = after {PAPER_MIN_DAYS}d paper-live, "
-            f"net >= +${PAPER_MIN_NET_PNL_USD:.0f}, max DD <= ${BOOK_USD * PAPER_MAX_DRAWDOWN_HARD:.0f}, "
-            f">= {PAPER_MIN_TRADES} trades, fees included."
+            f"Success on ${BOOK_USD:.0f} = after {PAPER_MIN_DAYS}d FORWARD paper-live, "
+            f"net >= +${PAPER_MIN_NET_PNL_USD:.0f} (capital >= ${BOOK_USD + PAPER_MIN_NET_PNL_USD:.0f}), "
+            f"max DD <= ${BOOK_USD * PAPER_MAX_DRAWDOWN_HARD:.0f}, "
+            f">= {PAPER_MIN_TRADES} trades, fees included. "
+            "Search-score chart is a different axis."
         ),
     }
 
 
 def plain_english_summary() -> str:
-    c = criteria_public_dict()
     lines = [
         f"Book: ${BOOK_USD:.0f} fake (lab/paper) or tiny live sleeve.",
-        f"LAB: >= {LAB_MIN_TRADES_FULL} trades, OOS profit, DD <= {LAB_MAX_DRAWDOWN:.0%}, pass strict exam.",
-        f"PAPER WIN: >= {PAPER_MIN_DAYS}d, >= {PAPER_MIN_TRADES} trades, "
-        f">= +${PAPER_MIN_NET_PNL_USD:.0f}, DD <= {PAPER_MAX_DRAWDOWN_HARD:.0%}.",
+        f"LAB (search/funnel): >= {LAB_MIN_TRADES_FULL} trades, full-sample P&L > $0, "
+        f"DD <= {LAB_MAX_DRAWDOWN:.0%}, pass strict exam. Large historical $ is NOT the win.",
+        f"PAPER WIN (forward only): >= {PAPER_MIN_DAYS}d, >= {PAPER_MIN_TRADES} trades, "
+        f">= +${PAPER_MIN_NET_PNL_USD:.0f} net (ends >= ${BOOK_USD + PAPER_MIN_NET_PNL_USD:.0f}), "
+        f"DD <= {PAPER_MAX_DRAWDOWN_HARD:.0%}.",
         f"LIVE: start ~${LIVE_START_USD:.0f}, kill if DD >= {LIVE_KILL_DRAWDOWN:.0%} "
         f"or {LIVE_KILL_CONSEC_LOSS_DAYS} loss-days in a row.",
-        "NOT success: search score alone, WR theater, thin samples, one-off funnel luck.",
-        c["single_number_target"],
+        "NOT success: search score alone, WR theater, thin samples, one-off funnel luck, "
+        "or mistaking full-history backtest P&L for the 30d paper target.",
+        criteria_public_dict()["single_number_target"],
     ]
     return "\n".join(lines)

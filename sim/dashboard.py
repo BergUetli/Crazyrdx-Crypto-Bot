@@ -575,34 +575,42 @@ def _y_of(v: float, mn: float, mx: float, mt: float, ph: float) -> float:
     return mt + ph - (v - mn) / (mx - mn) * ph
 
 
-def fitness_chart(vals: list[float], w: int = 720, h: int = 220) -> str:
+def fitness_chart(vals: list[float], w: int = 720, h: int = 250) -> str:
+    """Search-score chart only. No dollar targets on this axis."""
     if not vals:
-        return ""
+        return '<div class="muted">Not enough finished searches yet.</div>'
+    if len(vals) < 2:
+        return '<div class="muted">Need at least 2 finished searches for this chart.</div>'
+
     clean = [sanitize_fitness(v) for v in vals]
-    # If everything was explodey legacy, show flat zero with note
     if all(v == 0 for v in clean) and any(abs(float(v or 0)) > 1000 for v in vals):
         return (
             f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}">'
             f'<rect width="{w}" height="{h}" fill="#0b1220"/>'
             f'<text x="20" y="{h//2}" fill="#fbbf24" font-size="14">'
-            f'Old search scores were broken (1e17 blow-ups). New runs will plot here.</text></svg>'
+            f'Old scores were broken. New runs will show here.</text></svg>'
         )
+
     ordered = sorted(clean)
     p05 = ordered[int(0.05 * (len(ordered) - 1))]
     p95 = ordered[int(0.95 * (len(ordered) - 1))]
     if p95 <= p05:
         p95 = p05 + 1.0
-    clipped = [min(max(v, p05), p95) for v in clean]
-    mn, mx = min(clipped), max(clipped)
-    if mx <= mn:
-        mx = mn + 1.0
+    scale_lo = min(p05, 0.0) - 5.0
+    scale_hi = max(p95, 0.0) + 5.0
+    if scale_hi <= scale_lo:
+        scale_hi = scale_lo + 1.0
+    clipped = [min(max(v, scale_lo), scale_hi) for v in clean]
+    mn, mx = scale_lo, scale_hi
     med = statistics.median(clipped)
+
     win = max(3, min(7, len(clipped) // 5 or 3))
     ma = []
     for i in range(len(clipped)):
         lo = max(0, i - win + 1)
         ma.append(sum(clipped[lo : i + 1]) / (i - lo + 1))
-    ml, mr, mt, mb = 48, 16, 28, 36
+
+    ml, mr, mt, mb = 56, 16, 48, 52
     pw, ph = w - ml - mr, h - mt - mb
 
     def xy(i, v):
@@ -612,51 +620,89 @@ def fitness_chart(vals: list[float], w: int = 720, h: int = 220) -> str:
 
     pts = " ".join(f"{xy(i,v)[0]:.1f},{xy(i,v)[1]:.1f}" for i, v in enumerate(clipped))
     ma_pts = " ".join(f"{xy(i,v)[0]:.1f},{xy(i,v)[1]:.1f}" for i, v in enumerate(ma))
-    y_med = xy(0, med)[1]
-    # zero line if in range
-    zero_line = ""
+
+    grid = []
+    for i in range(5):
+        tv = mn + i * (mx - mn) / 4
+        y = xy(0, tv)[1]
+        grid.append(
+            f'<line x1="{ml}" y1="{y:.1f}" x2="{w-mr}" y2="{y:.1f}" stroke="#1a2332" stroke-width="1"/>'
+        )
+        grid.append(
+            f'<text x="{ml-8}" y="{y+4:.1f}" fill="#8b9bb4" font-size="11" text-anchor="end">{tv:.0f}</text>'
+        )
+
+    refs = []
     if mn < 0 < mx:
         y0 = xy(0, 0.0)[1]
-        zero_line = f'<line x1="{ml}" y1="{y0:.1f}" x2="{w-mr}" y2="{y0:.1f}" stroke="#64748b" stroke-dasharray="4 4" stroke-width="1"/>'
-    x0, y0p = xy(0, clipped[0])
-    x1, y1p = xy(len(clipped) - 1, clipped[-1])
-    return (
-        f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}">'
-        f'<rect width="{w}" height="{h}" fill="#0b1220"/>'
-        f'<text x="{ml}" y="18" fill="#94a3b8" font-size="12">Search score (ranking only, not $). Sane range ~-200..+200</text>'
-        f'{zero_line}'
-        f'<line x1="{ml}" y1="{y_med:.1f}" x2="{w-mr}" y2="{y_med:.1f}" stroke="#334155" stroke-dasharray="3 3"/>'
-        f'<polyline fill="none" stroke="#38bdf8" stroke-width="2" points="{pts}"/>'
-        f'<polyline fill="none" stroke="#a78bfa" stroke-width="1.5" points="{ma_pts}"/>'
-        f'<circle cx="{x0:.1f}" cy="{y0p:.1f}" r="3" fill="#38bdf8"/>'
-        f'<circle cx="{x1:.1f}" cy="{y1p:.1f}" r="3" fill="#38bdf8"/>'
-        f'<text x="{ml}" y="{h-10}" fill="#64748b" font-size="11">older → newer · median {med:.0f} · latest {clipped[-1]:.0f}</text>'
-        f"</svg>"
+        refs.append(
+            f'<line x1="{ml}" y1="{y0:.1f}" x2="{w-mr}" y2="{y0:.1f}" '
+            f'stroke="#64748b" stroke-width="1.2" stroke-dasharray="3,3"/>'
+            f'<text x="{ml+4}" y="{y0-4:.1f}" fill="#94a3b8" font-size="10">0 = break-even ranking</text>'
+        )
+    ym = xy(0, med)[1]
+    refs.append(
+        f'<line x1="{ml}" y1="{ym:.1f}" x2="{w-mr}" y2="{ym:.1f}" '
+        f'stroke="#f5a623" stroke-width="1.2" stroke-dasharray="4,3"/>'
+        f'<text x="{ml+4}" y="{ym+12:.1f}" fill="#f5a623" font-size="10">typical level ({med:.0f})</text>'
     )
 
+    x0, y0p = xy(0, clipped[0])
+    x1, y1p = xy(len(clipped) - 1, clipped[-1])
+    legend = (
+        f'<rect x="{ml}" y="8" width="14" height="3" fill="#38bdf8"/>'
+        f'<text x="{ml+18}" y="12" fill="#c9d7ea" font-size="11">best idea each search</text>'
+        f'<rect x="{ml+180}" y="8" width="14" height="3" fill="#a78bfa"/>'
+        f'<text x="{ml+198}" y="12" fill="#c9d7ea" font-size="11">smoother trend</text>'
+        f'<line x1="{ml+330}" y1="10" x2="{ml+346}" y2="10" stroke="#f5a623" stroke-width="1.5" stroke-dasharray="3,2"/>'
+        f'<text x="{ml+350}" y="12" fill="#c9d7ea" font-size="11">typical</text>'
+    )
+    return f"""
+    <svg viewBox="0 0 {w} {h}" width="100%" height="{h}" style="background:#0f1419;border-radius:8px">
+      <text x="{ml}" y="32" fill="#e7eef7" font-size="14" font-weight="600">How good ideas look while searching</text>
+      <text x="{w-mr}" y="32" fill="#8b9bb4" font-size="11" text-anchor="end">not money · not capital</text>
+      {legend}
+      {''.join(grid)}
+      {''.join(refs)}
+      <polyline fill="none" stroke="#a78bfa" stroke-width="2" opacity="0.9" points="{ma_pts}"/>
+      <polyline fill="none" stroke="#38bdf8" stroke-width="2.5" points="{pts}"/>
+      <circle cx="{x0:.1f}" cy="{y0p:.1f}" r="3" fill="#8b9bb4"/>
+      <circle cx="{x1:.1f}" cy="{y1p:.1f}" r="3.5" fill="#38bdf8"/>
+      <text x="{x1:.1f}" y="{y1p-8:.1f}" fill="#38bdf8" font-size="11" text-anchor="end">now {clipped[-1]:.0f}</text>
+      <text x="{ml}" y="{h-18}" fill="#8b9bb4" font-size="11">older</text>
+      <text x="{(ml+w-mr)/2:.0f}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="middle">each point = one finished search</text>
+      <text x="{w-mr}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>
+      <text x="{ml}" y="{h-4}" fill="#6b7c94" font-size="10">
+        Blue = that search's best idea ranking. Purple = short average. Higher can mean better hunt, not “we made $X”.
+      </text>
+    </svg>"""
 
-def trades_chart(vals: list[int], w: int = 720, h: int = 200) -> str:
-    """Bar chart: how often the winner traded enough."""
+
+def trades_chart(vals: list[int], w: int = 720, h: int = 230) -> str:
+    """Trade-count bars with LAB min line only (engine gate)."""
     if len(vals) < 2:
-        return '<div class="muted">Not enough finished cycles yet to draw a trade chart.</div>'
+        return '<div class="muted">Not enough finished searches yet.</div>'
 
-    ml, mr, mt, mb = 56, 18, 36, 46
+    ml, mr, mt, mb = 56, 16, 48, 50
     pw, ph = w - ml - mr, h - mt - mb
     mx = max(max(vals), MIN_TRADES, 1)
-    # Cap display height a bit if one bar is huge
     mx = max(mx, int(statistics.median(vals) * 2.5) if vals else mx)
     n = len(vals)
     bw = max(2.0, pw / n * 0.7)
-
     good = sum(1 for v in vals if v >= MIN_TRADES)
     bad = n - good
     med = statistics.median(vals)
 
     parts = [
-        f'<text x="{ml}" y="22" fill="#e7eef7" font-size="14" font-weight="600">How many trades each cycle winner took</text>',
-        f'<text x="{w-mr}" y="22" fill="#8b9bb4" font-size="11" text-anchor="end">green = enough sample · red = too thin</text>',
+        f'<text x="{ml}" y="20" fill="#e7eef7" font-size="14" font-weight="600">How many pretend trades each best idea took</text>',
+        f'<text x="{w-mr}" y="20" fill="#8b9bb4" font-size="11" text-anchor="end">need at least {MIN_TRADES}</text>',
+        f'<rect x="{ml}" y="28" width="10" height="10" fill="#3ddc97" rx="1"/>'
+        f'<text x="{ml+14}" y="37" fill="#c9d7ea" font-size="11">enough (≥{MIN_TRADES})</text>'
+        f'<rect x="{ml+130}" y="28" width="10" height="10" fill="#e85d5d" rx="1"/>'
+        f'<text x="{ml+144}" y="37" fill="#c9d7ea" font-size="11">too few</text>'
+        f'<line x1="{ml+230}" y1="33" x2="{ml+246}" y2="33" stroke="#f5a623" stroke-width="2" stroke-dasharray="4,2"/>'
+        f'<text x="{ml+250}" y="37" fill="#c9d7ea" font-size="11">minimum the bot accepts ({MIN_TRADES})</text>',
     ]
-    # Grid
     for i in range(5):
         tv = mx * i / 4
         y = mt + ph - (tv / mx) * ph
@@ -666,40 +712,142 @@ def trades_chart(vals: list[int], w: int = 720, h: int = 200) -> str:
         parts.append(
             f'<text x="{ml-8}" y="{y+4:.1f}" fill="#8b9bb4" font-size="11" text-anchor="end">{tv:.0f}</text>'
         )
-
     y30 = mt + ph - (MIN_TRADES / mx) * ph
     parts.append(
-        f'<line x1="{ml}" y1="{y30:.1f}" x2="{w-mr}" y2="{y30:.1f}" stroke="#f5a623" stroke-width="1.5" stroke-dasharray="5,3"/>'
+        f'<line x1="{ml}" y1="{y30:.1f}" x2="{w-mr}" y2="{y30:.1f}" stroke="#f5a623" stroke-width="1.8" stroke-dasharray="5,3"/>'
     )
     parts.append(
         f'<text x="{w-mr}" y="{y30-5:.1f}" fill="#f5a623" font-size="11" text-anchor="end">'
-        f'minimum useful sample ({MIN_TRADES})</text>'
+        f'must clear this line ({MIN_TRADES})</text>'
     )
-
     for i, v in enumerate(vals):
         x = ml + i * pw / max(n - 1, 1) - bw / 2
         bh = min(ph, (min(v, mx) / mx) * ph)
         y = mt + ph - bh
         color = "#3ddc97" if v >= MIN_TRADES else "#e85d5d"
         parts.append(
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{bh:.1f}" fill="{color}" opacity="0.88" rx="1"/>'
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bw:.1f}" height="{bh:.1f}" fill="{color}" opacity="0.9" rx="1"/>'
         )
-
     parts.append(
-        f'<text x="{ml}" y="{h-14}" fill="#8b9bb4" font-size="11">older</text>'
-        f'<text x="{(ml+w-mr)/2:.0f}" y="{h-14}" fill="#8b9bb4" font-size="11" text-anchor="middle">'
-        f'each bar = trades by that cycle\'s best genome</text>'
-        f'<text x="{w-mr}" y="{h-14}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>'
+        f'<text x="{ml}" y="{h-16}" fill="#8b9bb4" font-size="11">older</text>'
+        f'<text x="{(ml+w-mr)/2:.0f}" y="{h-16}" fill="#8b9bb4" font-size="11" text-anchor="middle">'
+        f'each bar = one finished search</text>'
+        f'<text x="{w-mr}" y="{h-16}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>'
     )
     parts.append(
         f'<text x="{ml}" y="{h-2}" fill="#6b7c94" font-size="10">'
-        f'{good} of {n} bars clear the {MIN_TRADES} line · typical trades {med:.0f} · '
-        f'{bad} still too thin to trust</text>'
+        f'{good}/{n} cleared the minimum · typical {med:.0f} trades · {bad} too thin to trust</text>'
     )
     return (
         f'<svg viewBox="0 0 {w} {h}" width="100%" height="{h}" '
-        f'style="background:#0f1419;border-radius:8px">{"".join(parts)}</svg>'
+        f'style="background:#0f1419;border-radius:8px">'
+        + "".join(parts)
+        + "</svg>"
     )
+
+
+def pnl_chart(vals: list[float], w: int = 720, h: int = 250) -> str:
+    """Full-history paper P&L on $100 book. LAB target is simply > $0."""
+    if len(vals) < 2:
+        return '<div class="muted">Not enough finished searches yet.</div>'
+
+    clean = []
+    for v in vals:
+        try:
+            x = float(v or 0)
+        except Exception:
+            x = 0.0
+        if abs(x) > 1e6:
+            x = 0.0
+        clean.append(x)
+
+    ordered = sorted(clean)
+    p05 = ordered[int(0.05 * (len(ordered) - 1))]
+    p95 = ordered[int(0.95 * (len(ordered) - 1))]
+    # Engine LAB gate: P&L > 0. Do NOT put +$5 paper-forward target here.
+    lab_floor = 0.0
+    scale_lo = min(p05, lab_floor, 0.0) - max(5.0, abs(p05) * 0.1)
+    scale_hi = max(p95, lab_floor, 0.0) + max(5.0, abs(p95) * 0.1)
+    if scale_hi <= scale_lo:
+        scale_hi = scale_lo + 1.0
+    clipped = [min(max(v, scale_lo), scale_hi) for v in clean]
+    mn, mx = scale_lo, scale_hi
+    med = statistics.median(clipped)
+
+    win = max(3, min(7, len(clipped) // 5 or 3))
+    ma = []
+    for i in range(len(clipped)):
+        lo = max(0, i - win + 1)
+        ma.append(sum(clipped[lo : i + 1]) / (i - lo + 1))
+
+    ml, mr, mt, mb = 56, 16, 48, 56
+    pw, ph = w - ml - mr, h - mt - mb
+
+    def xy(i, v):
+        x = ml + i * pw / max(len(clipped) - 1, 1)
+        y = mt + (1 - (v - mn) / (mx - mn)) * ph
+        return x, y
+
+    pts = " ".join(f"{xy(i,v)[0]:.1f},{xy(i,v)[1]:.1f}" for i, v in enumerate(clipped))
+    ma_pts = " ".join(f"{xy(i,v)[0]:.1f},{xy(i,v)[1]:.1f}" for i, v in enumerate(ma))
+
+    grid = []
+    for i in range(5):
+        tv = mn + i * (mx - mn) / 4
+        y = xy(0, tv)[1]
+        grid.append(
+            f'<line x1="{ml}" y1="{y:.1f}" x2="{w-mr}" y2="{y:.1f}" stroke="#1a2332" stroke-width="1"/>'
+        )
+        grid.append(
+            f'<text x="{ml-8}" y="{y+4:.1f}" fill="#8b9bb4" font-size="11" text-anchor="end">${tv:.0f}</text>'
+        )
+
+    y0 = xy(0, 0.0)[1]
+    refs = [
+        f'<line x1="{ml}" y1="{y0:.1f}" x2="{w-mr}" y2="{y0:.1f}" '
+        f'stroke="#3ddc97" stroke-width="2" stroke-dasharray="6,4"/>'
+        f'<text x="{w-mr}" y="{y0-5:.1f}" fill="#3ddc97" font-size="11" text-anchor="end">'
+        f'LAB gate: profit > $0 on ${BOOK_USD:.0f} history</text>',
+    ]
+    ym = xy(0, med)[1]
+    refs.append(
+        f'<line x1="{ml}" y1="{ym:.1f}" x2="{w-mr}" y2="{ym:.1f}" '
+        f'stroke="#f5a623" stroke-width="1.2" stroke-dasharray="4,3"/>'
+        f'<text x="{ml+4}" y="{ym+12:.1f}" fill="#f5a623" font-size="10">typical ${med:.0f}</text>'
+    )
+
+    x1, y1p = xy(len(clipped) - 1, clipped[-1])
+    above = sum(1 for v in clean if v > 0)
+    end_cap = BOOK_USD + clean[-1]
+    legend = (
+        f'<rect x="{ml}" y="8" width="14" height="3" fill="#38bdf8"/>'
+        f'<text x="{ml+18}" y="12" fill="#c9d7ea" font-size="11">paper profit/loss on history</text>'
+        f'<rect x="{ml+220}" y="8" width="14" height="3" fill="#a78bfa"/>'
+        f'<text x="{ml+238}" y="12" fill="#c9d7ea" font-size="11">smoother trend</text>'
+        f'<line x1="{ml+370}" y1="10" x2="{ml+386}" y2="10" stroke="#3ddc97" stroke-width="2" stroke-dasharray="4,2"/>'
+        f'<text x="{ml+390}" y="12" fill="#c9d7ea" font-size="11">must stay above $0</text>'
+    )
+    return f"""
+    <svg viewBox="0 0 {w} {h}" width="100%" height="{h}" style="background:#0f1419;border-radius:8px">
+      <text x="{ml}" y="32" fill="#e7eef7" font-size="14" font-weight="600">Paper profit on old price history (fake ${BOOK_USD:.0f})</text>
+      <text x="{w-mr}" y="32" fill="#8b9bb4" font-size="11" text-anchor="end">not the 30-day forward win</text>
+      {legend}
+      {''.join(grid)}
+      {''.join(refs)}
+      <polyline fill="none" stroke="#a78bfa" stroke-width="2" opacity="0.9" points="{ma_pts}"/>
+      <polyline fill="none" stroke="#38bdf8" stroke-width="2.5" points="{pts}"/>
+      <circle cx="{x1:.1f}" cy="{y1p:.1f}" r="3.5" fill="#38bdf8"/>
+      <text x="{x1:.1f}" y="{y1p-8:.1f}" fill="#38bdf8" font-size="11" text-anchor="end">
+        now ${clean[-1]:+.0f} → book ~${end_cap:.0f}
+      </text>
+      <text x="{ml}" y="{h-18}" fill="#8b9bb4" font-size="11">older</text>
+      <text x="{(ml+w-mr)/2:.0f}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="middle">each point = best idea of one search</text>
+      <text x="{w-mr}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>
+      <text x="{ml}" y="{h-4}" fill="#6b7c94" font-size="10">
+        Starts from ${BOOK_USD:.0f}. Above green = history profitable (LAB). Big history $ is common and still not the real 30-day paper win.
+        {above}/{len(clean)} searches ended above $0.
+      </text>
+    </svg>"""
 
 
 def chart_commentary(fit_vals: list[float], trade_vals: list[int], trend: dict) -> dict:
@@ -707,52 +855,43 @@ def chart_commentary(fit_vals: list[float], trade_vals: list[int], trend: dict) 
     n = len(fit_vals)
     if n < 3:
         return {
-            "fitness": "Not enough cycles yet. Come back after several finished search rounds.",
-            "trades": "Trade chart needs a few finished cycles before it is meaningful.",
+            "fitness": "Not enough searches yet.",
+            "trades": "Not enough searches yet.",
             "overall": trend.get("why") or "Still collecting data.",
         }
 
-    last3 = fit_vals[-3:]
-    first3 = fit_vals[:3]
     last_med = statistics.median(fit_vals[-max(5, n // 3) :])
     first_med = statistics.median(fit_vals[: max(5, n // 3)])
     if last_med > first_med * 1.08:
         fit_c = (
-            f"Over the last {n} cycles, the middle of the score line is higher than earlier "
-            f"({first_med:.0f} then {last_med:.0f}). That can mean better ranking, but it is still only a search score."
+            f"The ranking line is a bit higher lately ({first_med:.0f} → {last_med:.0f}). "
+            f"That only means the hunt likes recent ideas more — not that you made cash."
         )
     elif last_med < first_med * 0.92:
         fit_c = (
-            f"The middle of the score line is lower than earlier ({first_med:.0f} then {last_med:.0f}). "
-            f"Either the search got stricter, or winners look less attractive on holdout data."
+            f"The ranking line is a bit lower lately ({first_med:.0f} → {last_med:.0f}). "
+            f"The hunt may be stricter, or recent winners look weaker on later data."
         )
     else:
-        fit_c = (
-            f"The green line is bouncing around a similar middle ({last_med:.0f}). "
-            f"That usually means the engine is exploring, not clearly inventing a stronger edge."
-        )
-
-    # Spike warning
-    if max(fit_vals) > statistics.median(fit_vals) * 2.5:
-        fit_c += " One or more tall spikes are outliers. Judge the orange median line, not the spikes."
+        fit_c = f"The ranking line is roughly steady (around {last_med:.0f})."
 
     good = sum(1 for t in trade_vals if t >= MIN_TRADES)
     pct = 100.0 * good / max(len(trade_vals), 1)
     tmed = statistics.median(trade_vals) if trade_vals else 0
     if pct >= 90 and tmed >= MIN_TRADES:
         trade_c = (
-            f"Good news on sample size: {good}/{len(trade_vals)} winners traded at least {MIN_TRADES} times "
-            f"(typical {tmed:.0f}). These are thick enough to discuss, not automatically good enough to trade live."
+            f"Good: {good}/{len(trade_vals)} best ideas traded enough times "
+            f"(typical {tmed:.0f}). We can at least talk about them."
         )
     elif pct >= 50:
         trade_c = (
-            f"Mixed: {good}/{len(trade_vals)} clear the {MIN_TRADES} trade line (typical {tmed:.0f}). "
-            f"Ignore red bars when reading fitness."
+            f"Mixed: {good}/{len(trade_vals)} clear the {MIN_TRADES}-trade line "
+            f"(typical {tmed:.0f})."
         )
     else:
         trade_c = (
-            f"Worrying: only {good}/{len(trade_vals)} winners have {MIN_TRADES}+ trades. "
-            f"High scores on red bars are usually luck."
+            f"Worrying: only {good}/{len(trade_vals)} have {MIN_TRADES}+ trades. "
+            f"Thin samples are mostly noise."
         )
 
     overall = trend.get("why") or ""
@@ -760,14 +899,13 @@ def chart_commentary(fit_vals: list[float], trade_vals: list[int], trend: dict) 
     if detail:
         overall = f"{overall} {detail}".strip()
 
-    # Last finished context
     if trade_vals:
         last_t = trade_vals[-1]
         last_f = sanitize_fitness(fit_vals[-1])
         if last_t < MIN_TRADES:
-            overall += f" Latest cycle scored {last_f:.0f} on only {last_t} trades: treat as noise."
+            overall += f" Latest search ranked {last_f:.0f} on only {last_t} trades: treat as noise."
         else:
-            overall += f" Latest cycle: score {last_f:.0f} with {last_t} trades."
+            overall += f" Latest search: ranking {last_f:.0f} with {last_t} pretend trades."
 
     return {"fitness": fit_c, "trades": trade_c, "overall": overall}
 
@@ -1078,19 +1216,19 @@ def last_cycle_html(s: dict) -> str:
     <p class="lead">{story['last_line']}</p>
     <div class="grid4" style="margin-top:12px">
       <div class="stat">
-        <div class="k">Paper trades by best idea</div>
+        <div class="k">Pretend trades</div>
         <div class="v" style="color:{trade_color}">{trades}</div>
         <div class="hint">{trust}</div>
       </div>
       <div class="stat">
-        <div class="k">Search score (not $)</div>
+        <div class="k">Computer ranking</div>
         <div class="v">{fit_label}</div>
         <div class="hint">{fit_note}</div>
       </div>
       <div class="stat">
-        <div class="k">Paper win rate / P&L</div>
+        <div class="k">History win rate / P&L</div>
         <div class="v">{win*100:.0f}% / ${pnl:.2f}</div>
-        <div class="hint">on fake $100 history money</div>
+        <div class="hint">fake ${BOOK_USD:.0f} on old prices → book ~${BOOK_USD + pnl:.0f}</div>
       </div>
       <div class="stat">
         <div class="k">Passed strict exam?</div>
@@ -1173,28 +1311,35 @@ def html_page(s: dict) -> str:
     recent = s.get("recent") or []
     fit_vals = [sanitize_fitness(r.get("best_fitness") or 0) for r in recent]
     trade_vals = [run_trades(r) for r in recent]
+    pnl_vals = [float((r.get("backtest") or {}).get("total_pnl") or 0) for r in recent]
     fit_chart = fitness_chart(fit_vals)
-    trade_chart = trades_chart(trade_vals)
+    money_chart = pnl_chart(pnl_vals)
     story = story_summary(s)
     rs = s.get("recent_sum") or {}
     kill_n = story.get("kill_n", 0)
-
-    # Even simpler chart captions
     n = len(trade_vals)
     good = sum(1 for t in trade_vals if t >= MIN_TRADES)
-    if n >= 3:
-        score_cap = (
-            f"Each green dotted path position is one finished search job. "
-            f"Higher = the computer liked that job's best idea more while searching. "
-            f"It is <b>not</b> guaranteed profit."
-        )
-        trade_cap = (
-            f"Each bar is: how many paper trades the best idea of that search took. "
-            f"Green bars cleared {MIN_TRADES}+ trades ({good}/{n}). Red bars are too thin to trust."
-        )
-    else:
-        score_cap = "Not enough finished searches yet for a useful chart."
-        trade_cap = "Not enough finished searches yet for a useful chart."
+    thin = n - good
+    pos_pnl = sum(1 for p in pnl_vals if p > 0)
+    trade_med = statistics.median(trade_vals) if trade_vals else 0
+    paper_end_min = BOOK_USD + PAPER_MIN_NET_PNL_USD
+    paper_end_tgt = BOOK_USD + 10.0
+    try:
+        from success_criteria import PAPER_TARGET_NET_PNL_USD
+        paper_end_tgt = BOOK_USD + PAPER_TARGET_NET_PNL_USD
+    except Exception:
+        pass
+
+    # Only resurface a trade chart if thin samples reappear (gate regression)
+    trade_alert = ""
+    if n >= 5 and good < n:
+        trade_alert = f"""
+    <div class="warnbox">
+      <b>Trade-count warning:</b> {thin}/{n} recent best ideas had fewer than {MIN_TRADES} pretend trades.
+      The bot is supposed to reject thin samples — this chart used to watch that. Worth a look.
+    </div>
+    <div style="margin-top:12px">{trades_chart(trade_vals)}</div>
+"""
 
     return f"""<!doctype html>
 <html lang="en">
@@ -1202,14 +1347,14 @@ def html_page(s: dict) -> str:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta http-equiv="refresh" content="10"/>
-<title>Bot search status</title>
+<title>Bot status (simple)</title>
 <style>
   :root {{ --bg:#0b0f14; --card:#151b23; --text:#e7eef7; --muted:#8b9bb4; --ok:#3ddc97; --bad:#e85d5d; --warn:#f5a623; --line:#243041; }}
   * {{ box-sizing:border-box; }}
   body {{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
          background:var(--bg); color:var(--text); padding:20px; max-width:920px; margin-left:auto; margin-right:auto; }}
-  h1 {{ margin:0; font-size:24px; }}
-  h2 {{ margin:0 0 10px; font-size:15px; color:var(--text); letter-spacing:0; text-transform:none; font-weight:700; }}
+  h1 {{ margin:0; font-size:26px; }}
+  h2 {{ margin:0 0 10px; font-size:17px; font-weight:700; }}
   .sub {{ color:var(--muted); font-size:13px; margin:6px 0 16px; }}
   .card {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:14px; }}
   .badge {{ display:inline-block; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; }}
@@ -1217,8 +1362,8 @@ def html_page(s: dict) -> str:
   .badge.bad {{ background:#2a1a22; color:var(--bad); }}
   .badge.warn {{ background:#2a2418; color:var(--warn); }}
   .grid4 {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }}
-  .grid2 {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }}
-  @media (max-width:800px) {{ .grid4,.grid2 {{ grid-template-columns:1fr; }} }}
+  .grid3 {{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }}
+  @media (max-width:800px) {{ .grid4,.grid3 {{ grid-template-columns:1fr; }} }}
   .stat {{ background:#0f1419; border-radius:8px; padding:10px 12px; }}
   .k {{ color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.04em; }}
   .v {{ font-size:22px; font-weight:700; margin-top:2px; }}
@@ -1239,31 +1384,24 @@ def html_page(s: dict) -> str:
   ul.plain li {{ margin:6px 0; }}
   .mapbox {{ background:#0f1419; border:1px solid var(--line); border-radius:10px; padding:12px 14px; font-size:14px; line-height:1.55; }}
   .mapbox b {{ color:var(--text); }}
-  .flow {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; color:#9fb2cc; white-space:pre-wrap; background:#0b1016; border-radius:8px; padding:10px 12px; margin-top:10px; }}
   .note {{ margin-top:10px; padding:10px 12px; border-radius:8px; background:#0f1419; border:1px solid var(--line); font-size:13px; line-height:1.45; color:#c9d7ea; }}
   .note b {{ color:var(--text); }}
   .warnbox {{ margin-top:12px; padding:12px 14px; border-radius:8px; border:1px solid #f5a62355; background:rgba(245,166,35,0.08); font-size:14px; line-height:1.5; }}
+  .okbox {{ margin-top:12px; padding:12px 14px; border-radius:8px; border:1px solid #3ddc9755; background:rgba(61,220,151,0.07); font-size:14px; line-height:1.5; }}
 </style>
 </head>
 <body>
   <h1>Is the bot finding anything useful?</h1>
-  <div class="sub">Auto-refresh every 10s · {s['now']} · <a href="/api">tech JSON</a></div>
+  <div class="sub">Refreshes every 10s · {s['now']} · <a href="/api">tech details</a></div>
 
   <div class="card">
-    <h2>40-second map</h2>
+    <h2>In one minute</h2>
     <div class="mapbox">
-      <b>Genome</b> = one strategy idea (a rulebook).<br/>
-      <b>Trade</b> = one simulated buy/sell while testing that idea on old price data.<br/>
-      <b>Generation</b> = one breeding round (keep good ideas, mix them, try tweaks).<br/>
-      <b>Cycle</b> = one full search job from scratch → pick winners → run a strict exam.<br/>
-      <b>Score / fitness</b> = how much the computer liked an idea <i>while searching</i>. Not real profit.<br/>
-      <b>Strict exam / funnel</b> = harder checks after the search. Only then can an idea join the shortlist.
-      <div class="flow">cycle
-  └─ many generations
-       └─ many genomes (ideas)
-            └─ each idea → many paper trades → a score
-  └─ best few ideas → strict exam
-       └─ pass → shortlist (still not live money)</div>
+      The bot invents <b>strategy ideas</b>, tries them on <b>old prices with fake ${BOOK_USD:.0f}</b>,
+      and only keeps ideas that pass a <b>strict exam</b>.<br/><br/>
+      <b>Nothing here is live money.</b> A high line on a chart is not “we earned $X”.<br/><br/>
+      Real success later means: run an idea forward for <b>{PAPER_MIN_DAYS} days</b> on paper and
+      end with about <b>${paper_end_min:.0f}+</b> (started from ${BOOK_USD:.0f}), with enough trades and no big crash.
     </div>
   </div>
 
@@ -1272,45 +1410,59 @@ def html_page(s: dict) -> str:
   {last_cycle_html(s)}
 
   <div class="card">
-    <h2>3. Across the last {rs.get('n',0)} finished searches</h2>
+    <h2>3. The last {rs.get('n',0)} finished searches</h2>
     <p class="lead">{story['trend_line']}</p>
     <p>{story['promo_line']}</p>
     <div class="grid4" style="margin-top:12px">
       <div class="stat">
-        <div class="k">Search jobs finished</div>
+        <div class="k">Searches finished</div>
         <div class="v">{rs.get('n',0)}</div>
-        <div class="hint">shown in the charts below</div>
+        <div class="hint">shown in the charts</div>
       </div>
       <div class="stat">
-        <div class="k">Winners with enough trades</div>
-        <div class="v">{rs.get('pct_n30',0):.0f}%</div>
-        <div class="hint">need ≥{MIN_TRADES} paper trades</div>
+        <div class="k">Enough trades?</div>
+        <div class="v" style="color:{'#3ddc97' if (n and good==n) else '#f5a623'}">{(100.0*good/max(n,1)):.0f}%</div>
+        <div class="hint">need ≥{MIN_TRADES} · typical {trade_med:.0f}</div>
       </div>
       <div class="stat">
-        <div class="k">Typical paper trades</div>
-        <div class="v">{rs.get('trade_med',0):.0f}</div>
-        <div class="hint">middle value of search winners</div>
+        <div class="k">History profitable</div>
+        <div class="v">{(100.0*pos_pnl/max(n,1)):.0f}%</div>
+        <div class="hint">paper P&L > $0 on old data</div>
       </div>
       <div class="stat">
-        <div class="k">Shortlist hits / blocked families</div>
+        <div class="k">Passed exam / blocked</div>
         <div class="v">{rs.get('promoted',0)} / {kill_n}</div>
-        <div class="hint">passes vs idea-families we refuse to retry</div>
+        <div class="hint">shortlist hits vs dead idea-families</div>
       </div>
     </div>
 
     <div style="margin-top:16px">
-      <div class="note" style="margin-bottom:8px"><b>Chart A — search scores:</b> {score_cap}</div>
+      <div class="note" style="margin-bottom:8px">
+        <b>Chart 1 — pretend profit on history.</b>
+        Starts from fake ${BOOK_USD:.0f}. Green line = must finish above $0 (what the engine requires in the lab).
+        Big history profits are common and still <b>not</b> the 30-day forward win.
+      </div>
+      {money_chart}
+    </div>
+
+    <div style="margin-top:16px">
+      <div class="note" style="margin-bottom:8px">
+        <b>Chart 2 — computer ranking while hunting.</b>
+        Blue = best idea each search. Purple = smoother trend. Orange = typical level.
+        This is <b>not dollars</b> and not “capital + ROI”.
+      </div>
       {fit_chart}
     </div>
-    <div style="margin-top:16px">
-      <div class="note" style="margin-bottom:8px"><b>Chart B — paper trades:</b> {trade_cap}</div>
-      {trade_chart}
-    </div>
+
+    {trade_alert}
 
     <div class="warnbox">
-      <b>Read this pair of charts together.</b>
-      A high spike on Chart A means nothing if Chart B is red for the same period.
-      Prefer many green bars and a calm score line over huge lonely spikes.
+      <b>Easy rule of thumb</b><br/>
+      1) Prefer Chart 1 above the green $0 line (history not a loser).<br/>
+      2) “Enough trades” above should stay near 100% (engine gate ≥{MIN_TRADES}).<br/>
+      3) Ranking (Chart 2) only matters if trades and history P&L look sane.<br/>
+      4) The real win is still later: 30 days forward paper ending near
+      <b>${paper_end_min:.0f}+</b> (stretch ${paper_end_tgt:.0f}), not a pretty history chart.
     </div>
   </div>
 
@@ -1319,47 +1471,46 @@ def html_page(s: dict) -> str:
   {champions_html(s)}
 
   <div class="card">
-    <h2>What counts as a win on ${BOOK_USD:.0f}?</h2>
-    <p class="lead">
-      Single target: after <b>{PAPER_MIN_DAYS} days</b> paper-live,
-      net <b>≥ +${PAPER_MIN_NET_PNL_USD:.0f}</b>, max drawdown
-      <b>≤ ${BOOK_USD * PAPER_MAX_DRAWDOWN_HARD:.0f}</b>,
-      ≥ <b>{PAPER_MIN_TRADES}</b> trades, fees included.
-    </p>
-    <table>
-      <tr><th>Stage</th><th>Bar</th><th>Means</th></tr>
+    <h2>What counts as a win?</h2>
+    <div class="okbox">
+      <b>The only “first real success”</b> is a <b>{PAPER_MIN_DAYS}-day forward paper run</b>
+      (after an idea is already on the shortlist): start ${BOOK_USD:.0f}, finish about
+      <b>≥ ${paper_end_min:.0f}</b> (net +${PAPER_MIN_NET_PNL_USD:.0f}), take ≥ <b>{PAPER_MIN_TRADES}</b> trades,
+      and don’t drop more than about <b>${BOOK_USD * PAPER_MAX_DRAWDOWN_HARD:.0f}</b> from the peak.
+    </div>
+    <table style="margin-top:12px">
+      <tr><th>Stage</th><th>What the bot requires</th><th>In plain English</th></tr>
       <tr>
-        <td><b>LAB</b></td>
-        <td class="muted">≥{MIN_TRADES} trades, OOS profit, DD ≤ 20%, pass strict exam</td>
-        <td class="muted">Interesting on history. Not money.</td>
+        <td><b>Lab hunt</b></td>
+        <td class="muted">≥{MIN_TRADES} trades, history profit > $0, drawdown ≤ 20%, pass strict exam</td>
+        <td class="muted">“Interesting on old prices.” Not your money. Not go-live.</td>
       </tr>
       <tr>
-        <td><b>PAPER</b></td>
-        <td class="muted">≥{PAPER_MIN_DAYS}d, ≥{PAPER_MIN_TRADES} trades, ≥+${PAPER_MIN_NET_PNL_USD:.0f}, DD≤{int(PAPER_MAX_DRAWDOWN_HARD*100)}%</td>
-        <td class="muted">First real success before any live SOL.</td>
+        <td><b>Paper win</b></td>
+        <td class="muted">≥{PAPER_MIN_DAYS} days forward, ≥{PAPER_MIN_TRADES} trades, end ≥ ${paper_end_min:.0f}, DD ≤ {int(PAPER_MAX_DRAWDOWN_HARD*100)}%</td>
+        <td class="muted">First real success. Still not live SOL.</td>
       </tr>
       <tr>
-        <td><b>LIVE</b></td>
-        <td class="muted">Start tiny (~$25), kill at 20% DD or 5 loss-days in a row</td>
-        <td class="muted">Only after paper pass. Not unlocked yet.</td>
+        <td><b>Live micro</b></td>
+        <td class="muted">Start tiny (~$25), stop if down 20% or 5 losing days in a row</td>
+        <td class="muted">Only after paper win. Not unlocked yet.</td>
       </tr>
     </table>
     <div class="note" style="margin-top:10px">
-      <b>Not a win:</b> huge search score, high win-rate with tiny $, fewer than {MIN_TRADES} trades,
-      one funnel pass with no forward paper, or six clones of the same idea.
+      <b>Not a win:</b> a high ranking number, a big history profit on Chart 1, a high win-rate with tiny dollars,
+      fewer than {MIN_TRADES} trades, one lucky exam pass with no forward paper, or six copies of the same idea.
     </div>
-    <div class="flow" style="margin-top:10px">{plain_english_summary()}</div>
   </div>
 
   <div class="card">
-    <h2>Words you'll see</h2>
+    <h2>Words you’ll see</h2>
     <table>
-      <tr><td><b>SEARCHING</b></td><td class="muted">The Mac Mini is still inventing and grading strategy ideas.</td></tr>
-      <tr><td><b>Paper trades</b></td><td class="muted">Fake trades on historical candles. No real SOL moves.</td></tr>
-      <tr><td><b>Search score</b></td><td class="muted">Computer ranking while hunting. Useful for sorting ideas, useless alone for deciding go-live.</td></tr>
-      <tr><td><b>Strict exam</b></td><td class="muted">Extra tests (later data, fee stress, chapter tests…). Fail = idea dies, and that family can enter the blocked list.</td></tr>
-      <tr><td><b>Shortlist</b></td><td class="muted">Ideas that passed the LAB exam. Candidates for later paper trading — still not your capital.</td></tr>
-      <tr><td><b>Blocked families</b></td><td class="muted">Known failed idea neighborhoods. The bot tries not to retest them forever.</td></tr>
+      <tr><td><b>Searching</b></td><td class="muted">The Mac Mini is inventing and grading ideas.</td></tr>
+      <tr><td><b>Pretend / paper trades</b></td><td class="muted">Fake buy/sell on old prices. No real SOL moves.</td></tr>
+      <tr><td><b>Ranking / search score</b></td><td class="muted">How much the computer liked an idea while hunting. Sorting tool only.</td></tr>
+      <tr><td><b>Strict exam</b></td><td class="muted">Extra hardness checks after the hunt. Fail = idea dies.</td></tr>
+      <tr><td><b>Shortlist</b></td><td class="muted">Ideas that passed the lab exam. Candidates only.</td></tr>
+      <tr><td><b>Blocked families</b></td><td class="muted">Known bad idea neighborhoods the bot tries not to retest forever.</td></tr>
     </table>
   </div>
 </body>
