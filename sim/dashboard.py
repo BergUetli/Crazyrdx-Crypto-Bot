@@ -251,23 +251,25 @@ def plain_english_trend(direction: str, prev: dict, recent: dict, prev_med, rec_
 # ---------------------------------------------------------------------------
 # Learning curve: how far ideas get through the strict exam over time.
 # The funnel gates are ordered; "depth" = how many gates the best candidate
-# of a search cleared before dying (8 = passed everything = shortlist).
+# of a search cleared before dying (all gates passed = shortlist).
 # ---------------------------------------------------------------------------
 
 GATE_ORDER = [
-    "kill_archive", "feasibility", "oos", "walk_forward",
+    "kill_archive", "feasibility", "oos", "benchmark", "walk_forward",
     "fee_stress", "perturbation", "mev", "dsr",
 ]
 GATE_FRIENDLY = {
     "kill_archive": "blocked at the door (known-bad family)",
     "feasibility": "basic check (enough trades, profit, drawdown)",
     "oos": "unseen later data",
+    "benchmark": "beating buy-and-hold (beta filter)",
     "walk_forward": "chapter-by-chapter consistency",
     "fee_stress": "higher fees",
     "perturbation": "small rule nudges",
     "mev": "front-running stress",
     "dsr": "statistical luck filter",
 }
+N_GATES = len(GATE_ORDER)
 
 
 def funnel_depth(r: dict):
@@ -338,17 +340,17 @@ def learning_stats(runs: list[dict]) -> dict:
         )
     elif rec_med >= prev_med + 0.5:
         direction, head = "SMARTER", (
-            f"Slowly — ideas now typically clear {rec_med:.1f} of 8 exam gates, "
+            f"Slowly — ideas now typically clear {rec_med:.1f} of {N_GATES} exam gates, "
             f"up from {prev_med:.1f}. Closer to a shortlist pass."
         )
     elif rec_med <= prev_med - 0.5:
         direction, head = "WEAKER", (
             f"No — ideas are dying earlier in the exam "
-            f"({prev_med:.1f} → {rec_med:.1f} of 8 gates)."
+            f"({prev_med:.1f} → {rec_med:.1f} of {N_GATES} gates)."
         )
     else:
         direction, head = "FLAT", (
-            f"Not yet — exam progress is flat (typically {rec_med:.1f} of 8 gates, "
+            f"Not yet — exam progress is flat (typically {rec_med:.1f} of {N_GATES} gates, "
             f"best recent run reached {rec_max})."
         )
 
@@ -396,7 +398,7 @@ def gate_depth_chart(depths: list[int], w: int = 720, h: int = 220) -> str:
         x = ml + (pw / n) * i + 1.5
         bh = (d / top) * ph
         y = mt + ph - bh
-        if d >= 8:
+        if d >= N_GATES:
             color = "#3ddc97"
         elif d >= 4:
             color = "#58a6ff"
@@ -410,7 +412,7 @@ def gate_depth_chart(depths: list[int], w: int = 720, h: int = 220) -> str:
         )
 
     gridlines = []
-    for lvl in (0, 2, 4, 6, 8):
+    for lvl in range(0, N_GATES + 1, 3):
         y = mt + ph - (lvl / top) * ph
         gridlines.append(
             f"<line x1='{ml}' y1='{y:.1f}' x2='{w - mr}' y2='{y:.1f}' "
@@ -423,7 +425,7 @@ def gate_depth_chart(depths: list[int], w: int = 720, h: int = 220) -> str:
 <svg viewBox="0 0 {w} {h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;background:#0f1419;border-radius:8px">
   {''.join(gridlines)}
   <line x1="{ml}" y1="{pass_y}" x2="{w - mr}" y2="{pass_y}" stroke="#3ddc97" stroke-width="1" stroke-dasharray="4 4"/>
-  <text x="{w - mr}" y="{pass_y + 14}" fill="#3ddc97" font-size="11" text-anchor="end">8 = passed the whole exam</text>
+  <text x="{w - mr}" y="{pass_y + 14}" fill="#3ddc97" font-size="11" text-anchor="end">{N_GATES} = passed the whole exam</text>
   {''.join(bars)}
   <text x="{ml}" y="{h - 8}" fill="#8b9bb4" font-size="11">older</text>
   <text x="{w - mr}" y="{h - 8}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>
@@ -539,12 +541,12 @@ def learning_html(s: dict) -> str:
     <div class="grid4" style="margin-top:12px">
       <div class="stat">
         <div class="k">Exam gates cleared (typical)</div>
-        <div class="v">{ls.get('rec_med', 0):.1f} / 8</div>
-        <div class="hint">earlier block: {ls.get('prev_med', 0):.1f} / 8</div>
+        <div class="v">{ls.get('rec_med', 0):.1f} / {N_GATES}</div>
+        <div class="hint">earlier block: {ls.get('prev_med', 0):.1f} / {N_GATES}</div>
       </div>
       <div class="stat">
         <div class="k">Best recent run</div>
-        <div class="v">{ls.get('rec_max', 0)} / 8</div>
+        <div class="v">{ls.get('rec_max', 0)} / {N_GATES}</div>
         <div class="hint">deepest any idea got lately</div>
       </div>
       <div class="stat">
@@ -561,9 +563,10 @@ def learning_html(s: dict) -> str:
     <div style="margin-top:16px">
       <div class="note" style="margin-bottom:8px">
         <b>Chart C — exam progress:</b> each bar is one finished search; height = how many of
-        the 8 exam gates its best idea cleared before dying.
+        the {N_GATES} exam gates its best idea cleared before dying.
         The exam order is: known-bad check → basic feasibility → unseen later data →
-        chapter consistency → fee stress → rule nudges → front-running stress → luck filter.
+        beating buy-and-hold → chapter consistency → fee stress → rule nudges →
+        front-running stress → luck filter.
         <b>Rising bars = real learning</b>, even while the shortlist is still empty.
       </div>
       {chart}

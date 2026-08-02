@@ -35,6 +35,8 @@ from success_criteria import (
     FEE_RATE_BASE,
     FEE_RATE_STRESS_HIGH,
     FEE_RATE_STRESS_MID,
+    LAB_BENCH_EXCESS_FACTOR,
+    LAB_BENCH_MIN_EXCESS_USD,
     LAB_DSR_ALT_OOS_PNL,
     LAB_DSR_ALT_WF_RATE,
     LAB_DSR_COLD_START_TRIALS,
@@ -123,6 +125,45 @@ def get_total_trials() -> int:
         return int(json.loads(TRIAL_COUNT_PATH.read_text()).get("total_trials", 0))
     except Exception:
         return 0
+
+
+def exposure_benchmark_pnl(result, features: List[Dict[str, Any]]) -> float:
+    """What the strategy's own exposure would have earned from market drift alone.
+
+    window_return x time_in_market x average_position_size, minus the same
+    trading costs the strategy paid. A long-only strategy whose PnL merely
+    matches this number has beta, not edge. (Long trades only; shorts are
+    disabled in the sim.)
+    """
+    if not features or not getattr(result, "trades", None):
+        return 0.0
+    first = float(features[0]["features"]["close"])
+    last = float(features[-1]["features"]["close"])
+    span = features[-1]["ts"] - features[0]["ts"]
+    if first <= 0 or span <= 0:
+        return 0.0
+    longs = [t for t in result.trades if t.direction == "long"]
+    if not longs:
+        return 0.0
+    window_ret = last / first - 1.0
+    time_in_market = min(
+        sum(max(t.exit_ts - t.entry_ts, 0) for t in longs) / span, 1.0
+    )
+    avg_size = sum(t.size_usd for t in longs) / len(longs)
+    costs = sum(t.fee_cost for t in longs)
+    return window_ret * time_in_market * avg_size - costs
+
+
+def benchmark_gate_passed(strategy_pnl: float, benchmark_pnl: float) -> bool:
+    """Strategy must clearly beat its exposure-matched market benchmark."""
+    if benchmark_pnl <= 0:
+        # Market handed out nothing for free; positive PnL is already evidence.
+        return strategy_pnl > benchmark_pnl
+    hurdle = max(
+        benchmark_pnl * LAB_BENCH_EXCESS_FACTOR,
+        benchmark_pnl + LAB_BENCH_MIN_EXCESS_USD,
+    )
+    return strategy_pnl >= hurdle
 
 
 def approximate_dsr(sharpe: float, n_obs: int, n_trials: int) -> float:
@@ -271,6 +312,21 @@ class PromotionFunnel:
         }
         if not oos_pass:
             return self._fail(name, genome, gates, "oos")
+
+        # Gate 2b: benchmark (beta filter) — OOS profit must beat what the
+        # strategy's own exposure would have earned from market drift alone.
+        # Without this, ANY long-only strategy passes in a rising market.
+        bench = exposure_benchmark_pnl(oos_res, oos_feats)
+        bench_pass = benchmark_gate_passed(oos_res.total_pnl, bench)
+        gates["benchmark"] = {
+            "passed": bench_pass,
+            "oos_pnl": float(oos_res.total_pnl),
+            "exposure_benchmark_pnl": float(bench),
+            "min_excess_usd": LAB_BENCH_MIN_EXCESS_USD,
+            "excess_factor": LAB_BENCH_EXCESS_FACTOR,
+        }
+        if not bench_pass:
+            return self._fail(name, genome, gates, "benchmark")
 
         # Gate 3: majority walk-forward (chronological folds, raw PnL > 0)
         fold_n = max(3, self.wf_folds)
@@ -683,13 +739,26 @@ def funnel_population_top(
 
     seen_exact = set()
     seen_family = set()
+    # Families already on the champion board never re-enter the funnel:
+    # warm-started champions would otherwise get re-promoted every cycle
+    # (wasted compute, noisy promoted= stats).
+    champion_families = set()
+    try:
+        for c in json.loads(CHAMPIONS_PATH.read_text()).get("champions", []):
+            champion_families.add(_family_key_from_genome_dict(c.get("genome") or {}))
+    except Exception:
+        pass
     picked: List[StrategyGenome] = []
     skipped_tabu = 0
+    skipped_champion = 0
     for g in cands:
         sig = _genome_signature(g)
         if sig in seen_exact:
             continue
         fam = _family_key_from_genome_dict(g.to_dict())
+        if fam in champion_families:
+            skipped_champion += 1
+            continue
         if fam in seen_family:
             continue
         if arch is not None and arch.is_killed(g):
@@ -712,6 +781,7 @@ def funnel_population_top(
         arch_n = arch.size if arch is not None else 0
         print(
             f"[funnel] candidates={len(results)} promoted={n_pass} "
-            f"tabu_skipped={skipped_tabu} kill_archive={arch_n}"
+            f"tabu_skipped={skipped_tabu} champion_skipped={skipped_champion} "
+            f"kill_archive={arch_n}"
         )
     return results

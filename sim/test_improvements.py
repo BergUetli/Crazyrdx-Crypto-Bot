@@ -580,6 +580,67 @@ def test_champion_flush(tmp: Path):
         pf.CHAMPIONS_PATH = old
 
 
+def test_benchmark_gate(features):
+    print("\n[13] benchmark (beta) gate + champion re-funnel skip")
+    import evolution.promotion_funnel as pf
+    from layer1.backtest_engine import SimulatedTrade
+
+    def fake_result(trades):
+        class R:
+            pass
+        r = R()
+        r.trades = trades
+        return r
+
+    def mk_trade(entry_ts, exit_ts, size, direction="long"):
+        return SimulatedTrade(
+            entry_ts=entry_ts, exit_ts=exit_ts, pair="SOL/USDC",
+            direction=direction, entry_price=100, exit_price=101,
+            size_usd=size, gross_pnl=0, fee_cost=0.08, net_pnl=0,
+            latency_s=10, slippage_bps=0, mev_cost_bps=0, signal_strength=1.0)
+
+    # Window rises 20%; strategy in market ~90% of the time with $40 positions
+    # (deep-copied rows so shared test data is not mutated)
+    win = [{"ts": f["ts"], "features": dict(f["features"])} for f in features[:400]]
+    first = win[0]["features"]["close"]
+    win[-1]["features"]["close"] = first * 1.2
+    t0, t1 = win[0]["ts"], win[-1]["ts"]
+    span = t1 - t0
+    beta_trades = [mk_trade(t0 + int(span*0.05), t0 + int(span*0.95), 40.0)]
+    bench = pf.exposure_benchmark_pnl(fake_result(beta_trades), win)
+    # 20% x 90% exposure x $40 = ~$7.2 minus costs
+    check(f"exposure benchmark computed (${bench:.2f})", 6.0 < bench < 7.5)
+    check("pure-beta PnL (= benchmark) is rejected",
+          not pf.benchmark_gate_passed(bench, bench))
+    check("PnL well above benchmark passes",
+          pf.benchmark_gate_passed(bench * 2, bench))
+    check("in a flat/down market, positive PnL passes",
+          pf.benchmark_gate_passed(1.0, -0.5))
+    check("tiny benchmark still needs $0.25 excess",
+          not pf.benchmark_gate_passed(0.3, 0.1)
+          and pf.benchmark_gate_passed(0.36, 0.1))
+
+    # Champion-family skip in funnel candidate selection
+    from evolution.genome import random_genome
+    import tempfile as tf
+    random.seed(51)
+    g = random_genome()
+    g.backtest_results = {"total_trades": 100}
+    g.fitness = 50.0
+    with tf.TemporaryDirectory() as td:
+        old = pf.CHAMPIONS_PATH
+        try:
+            pf.CHAMPIONS_PATH = Path(td) / "champions.json"
+            pf.CHAMPIONS_PATH.write_text(json.dumps(
+                {"champions": [{"genome_id": "champ", "score": 50,
+                                "genome": g.to_dict()}]}))
+            res = pf.funnel_population_top(features[:200], [g], top_k=5,
+                                           min_trades=30, verbose=False)
+            check("champion family skipped from re-funneling", len(res) == 0)
+        finally:
+            pf.CHAMPIONS_PATH = old
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -594,6 +655,7 @@ def main():
     test_realistic_economics(features)
     with tempfile.TemporaryDirectory() as td:
         test_champion_flush(Path(td))
+    test_benchmark_gate(features)
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))
