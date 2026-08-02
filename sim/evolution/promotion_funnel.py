@@ -673,6 +673,77 @@ def flush_legacy_champions(score_cap: float = 1e6) -> int:
     return len(legacy)
 
 
+def revalidate_champions(
+    features: List[Dict[str, Any]],
+    n_trials_context: Optional[int] = None,
+    verbose: bool = True,
+) -> Dict[str, int]:
+    """Re-run the CURRENT funnel on every champion; demote failures.
+
+    Champions promoted under older, weaker gate sets (e.g. before the
+    benchmark/beta gate existed) must not keep seeding warm-starts or
+    blocking their families from re-testing. Failures move to
+    champions_unvalidated.json and their families enter the kill archive.
+    Runs once at search startup; passers are simply kept.
+    """
+    if not CHAMPIONS_PATH.exists():
+        return {"kept": 0, "demoted": 0}
+    try:
+        champs = json.loads(CHAMPIONS_PATH.read_text()).get("champions") or []
+    except Exception:
+        return {"kept": 0, "demoted": 0}
+    if not champs:
+        return {"kept": 0, "demoted": 0}
+
+    funnel = PromotionFunnel(features)
+    kept: List[Dict[str, Any]] = []
+    demoted: List[Dict[str, Any]] = []
+    for c in champs:
+        gdict = c.get("genome")
+        if not gdict:
+            continue
+        try:
+            res = funnel.run(
+                StrategyGenome.from_dict(gdict),
+                n_trials_context=n_trials_context,
+                verbose=False,
+            )
+        except Exception:
+            res = None
+        if res and res.get("all_passed"):
+            c2 = dict(c)
+            c2["revalidated_ts"] = time.time()
+            kept.append(c2)
+            if verbose:
+                print(f"  [reval] KEEP {c.get('genome_id')}")
+        else:
+            c2 = dict(c)
+            c2["demoted_ts"] = time.time()
+            c2["demoted_at_gate"] = (res or {}).get("failed_at") or "error"
+            demoted.append(c2)
+            if verbose:
+                print(f"  [reval] DEMOTE {c.get('genome_id')} "
+                      f"(failed: {c2['demoted_at_gate']})")
+
+    if demoted:
+        unval_path = CHAMPIONS_PATH.parent / "champions_unvalidated.json"
+        prior: List[Dict[str, Any]] = []
+        if unval_path.exists():
+            try:
+                prior = json.loads(unval_path.read_text()).get("champions", [])
+            except Exception:
+                prior = []
+        unval_path.write_text(json.dumps(
+            {"updated_ts": time.time(), "champions": prior + demoted,
+             "note": "failed revalidation under current gates; families killed"},
+            indent=2, default=str))
+    CHAMPIONS_PATH.write_text(json.dumps(
+        {"updated_ts": time.time(), "n": len(kept), "champions": kept,
+         "dedupe": "structural_family_v1"},
+        indent=2, default=str))
+    return {"kept": len(kept), "demoted": len(demoted)}
+
+
 def rebuild_champions_deduped() -> Dict[str, Any]:
     """One-shot rewrite of champions.json with structural family dedupe."""
     if not CHAMPIONS_PATH.exists():
