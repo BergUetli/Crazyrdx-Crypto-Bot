@@ -24,6 +24,13 @@ FEE_RATE_STRESS_MID = 0.0005  # 5 bps
 FEE_RATE_STRESS_HIGH = 0.0010  # 10 bps
 MEV_PROB_SEARCH = 0.30
 MEV_COST_BPS = 15.0
+# Fixed cost per swap (Solana network + priority fees, independent of size).
+# On $25-50 positions this is 6-25 bps per side — it is what makes
+# high-frequency churning structurally unprofitable on a small book.
+FIXED_COST_PER_SIDE_USD = 0.03
+# Jupiter is spot: SOL/USDC cannot be shorted there. The simulator only takes
+# long entries so discovered edges are actually executable on the live venue.
+LONG_ONLY = True
 
 # ---------------------------------------------------------------------------
 # Stage 1 — LAB (discovery / funnel)

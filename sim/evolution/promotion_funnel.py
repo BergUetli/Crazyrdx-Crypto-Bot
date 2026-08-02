@@ -580,6 +580,43 @@ def _family_key_from_genome_dict(g: Dict[str, Any]) -> Tuple:
     return (logic, inds, dirs, exits)
 
 
+def flush_legacy_champions(score_cap: float = 1e6) -> int:
+    """Move bug-era champions (exploding pre-fix scores) to champions_legacy.json.
+
+    The old scoring could reach 1e17; those entries are artifacts of the
+    threshold/Sharpe bugs, not strategies. They must not seed warm-starts.
+    Runs at search startup; idempotent. Returns how many were archived.
+    """
+    if not CHAMPIONS_PATH.exists():
+        return 0
+    try:
+        raw = json.loads(CHAMPIONS_PATH.read_text())
+        champs = raw.get("champions") or []
+    except Exception:
+        return 0
+    legacy = [c for c in champs if abs(float(c.get("score") or 0)) > score_cap]
+    if not legacy:
+        return 0
+    keep = [c for c in champs if abs(float(c.get("score") or 0)) <= score_cap]
+
+    legacy_path = CHAMPIONS_PATH.parent / "champions_legacy.json"
+    prior: List[Dict[str, Any]] = []
+    if legacy_path.exists():
+        try:
+            prior = json.loads(legacy_path.read_text()).get("champions", [])
+        except Exception:
+            prior = []
+    legacy_path.write_text(json.dumps(
+        {"archived_ts": time.time(), "champions": prior + legacy,
+         "note": "bug-era scores (pre 2026-08-01 fixes); kept for history only"},
+        indent=2, default=str))
+    CHAMPIONS_PATH.write_text(json.dumps(
+        {"updated_ts": time.time(), "n": len(keep), "champions": keep,
+         "dedupe": "structural_family_v1"},
+        indent=2, default=str))
+    return len(legacy)
+
+
 def rebuild_champions_deduped() -> Dict[str, Any]:
     """One-shot rewrite of champions.json with structural family dedupe."""
     if not CHAMPIONS_PATH.exists():

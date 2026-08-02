@@ -26,8 +26,10 @@ from success_criteria import (
     FEE_RATE_BASE,
     FITNESS_MAX as SC_FITNESS_MAX,
     FITNESS_MIN as SC_FITNESS_MIN,
+    FIXED_COST_PER_SIDE_USD,
     LAB_MIN_TRADES_FULL,
     LAB_MIN_TRADES_OOS,
+    LONG_ONLY,
     MEV_COST_BPS,
     MEV_PROB_SEARCH,
 )
@@ -102,6 +104,8 @@ class GenomeEvaluator:
             initial_capital=initial_capital,
             fee_rate=fee_rate,
             latency_model=self.latency_model,
+            fixed_cost_per_side=FIXED_COST_PER_SIDE_USD,
+            long_only=LONG_ONLY,
         )
         self._current_genome: Optional[StrategyGenome] = None
         # Stable OOS/IS slices (computed once so the fast-signal column cache
@@ -200,6 +204,8 @@ class GenomeEvaluator:
                 initial_capital=self.initial_capital,
                 fee_rate=self.fee_rate,
                 latency_model=self.latency_model,
+                fixed_cost_per_side=FIXED_COST_PER_SIDE_USD,
+                long_only=LONG_ONLY,
             )
         signal_fn = None
         if FAST_SIGNALS_ENABLED:

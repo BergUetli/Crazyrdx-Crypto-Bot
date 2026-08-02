@@ -21,6 +21,7 @@ trials log, funnel results) is redirected to a temp directory so the real
 evolution artifacts are never touched.
 """
 
+import json
 import math
 import random
 import sqlite3
@@ -511,6 +512,74 @@ def test_fast_signals_equivalence(features):
         evmod.FAST_SIGNALS_ENABLED = old_flag
 
 
+def test_realistic_economics(features):
+    print("\n[11] realistic economics: fixed costs + long-only")
+    from layer1.backtest_engine import BacktestEngine
+    from evolution.evaluator import GenomeEvaluator
+    from evolution.genome import random_genome
+    random.seed(41)
+    ev = GenomeEvaluator(features, augment=False)
+    feats = ev.features
+
+    # A genome that trades both directions under MEANREV
+    g = random_genome()
+    g.entry_logic = "MEANREV"
+    fn = ev._build_signal_fn(g)
+
+    free = BacktestEngine(fixed_cost_per_side=0.0, long_only=False)
+    paid = BacktestEngine(fixed_cost_per_side=0.03, long_only=False)
+    r_free = free.run_backtest("free", "SOL/USDC", feats, fn, exit_rules=g.exit_rules)
+    r_paid = paid.run_backtest("paid", "SOL/USDC", feats, fn, exit_rules=g.exit_rules)
+    check("both engines produced trades",
+          r_free.total_trades > 0 and r_paid.total_trades > 0)
+    # Per-trade: paid engine charges proportional fee + exactly $0.06 fixed
+    ok_paid = all(
+        abs(t.fee_cost - (t.size_usd * paid.fee_rate * 2 + 0.06)) < 1e-9
+        for t in r_paid.trades
+    )
+    ok_free = all(
+        abs(t.fee_cost - t.size_usd * free.fee_rate * 2) < 1e-9
+        for t in r_free.trades
+    )
+    check(f"fixed $0.06/round-trip charged on every trade "
+          f"(n={r_paid.total_trades})", ok_paid and ok_free)
+    check("fixed costs reduce total PnL",
+          r_paid.total_pnl < r_free.total_pnl)
+
+    lo = BacktestEngine(long_only=True)
+    r_lo = lo.run_backtest("lo", "SOL/USDC", feats, fn, exit_rules=g.exit_rules)
+    check("long_only engine takes zero short trades",
+          all(t.direction == "long" for t in r_lo.trades))
+    r_both = free.run_backtest("both", "SOL/USDC", feats, fn, exit_rules=g.exit_rules)
+    check("shorts existed to be excluded (control)",
+          any(t.direction == "short" for t in r_both.trades))
+
+    # Evaluator default engines carry the realistic settings
+    check("evaluator engine is long-only with fixed costs",
+          ev.engine.long_only and ev.engine.fixed_cost_per_side > 0)
+
+
+def test_champion_flush(tmp: Path):
+    print("\n[12] legacy champion flush")
+    import evolution.promotion_funnel as pf
+    old = pf.CHAMPIONS_PATH
+    try:
+        pf.CHAMPIONS_PATH = tmp / "champions.json"
+        legacy = [{"genome_id": f"old_{i}", "score": 3e17, "genome": {}} for i in range(3)]
+        modern = [{"genome_id": "new_1", "score": 84.2, "genome": {}}]
+        pf.CHAMPIONS_PATH.write_text(json.dumps({"champions": legacy + modern}))
+        n = pf.flush_legacy_champions()
+        check("archived exactly the 3 legacy champions", n == 3, f"got {n}")
+        kept = json.loads(pf.CHAMPIONS_PATH.read_text())["champions"]
+        check("modern champion kept", [c["genome_id"] for c in kept] == ["new_1"])
+        arch = json.loads((tmp / "champions_legacy.json").read_text())
+        check("legacy file holds the archived 3", len(arch["champions"]) == 3)
+        n2 = pf.flush_legacy_champions()
+        check("flush is idempotent", n2 == 0, f"got {n2}")
+    finally:
+        pf.CHAMPIONS_PATH = old
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -522,6 +591,9 @@ def main():
     test_gap_fills()
     test_limit_query()
     test_fast_signals_equivalence(features)
+    test_realistic_economics(features)
+    with tempfile.TemporaryDirectory() as td:
+        test_champion_flush(Path(td))
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))

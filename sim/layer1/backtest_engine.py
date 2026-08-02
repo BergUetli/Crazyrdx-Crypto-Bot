@@ -225,6 +225,8 @@ class BacktestEngine:
         max_position_size: float = 0.5,    # max 50% of capital per trade
         min_signal_strength: float = 0.5,
         fast_columns: bool = True,      # numpy price arrays for the exit walk
+        fixed_cost_per_side: float = 0.03,  # USD per swap (network+priority fees)
+        long_only: bool = True,         # Jupiter spot: shorts not executable
     ):
         self.initial_capital = initial_capital
         self.fee_rate = fee_rate
@@ -232,6 +234,8 @@ class BacktestEngine:
         self.max_position_size = max_position_size
         self.min_signal_strength = min_signal_strength
         self.fast_columns = fast_columns
+        self.fixed_cost_per_side = fixed_cost_per_side
+        self.long_only = long_only
 
     def _price_columns(self, features):
         """(close, high, low, open) numpy arrays, or None -> dict path.
@@ -299,7 +303,9 @@ class BacktestEngine:
         if sig_arrays is not None:
             try:
                 dirs_a, strength_a, _ = sig_arrays
-                cand = np.flatnonzero(dirs_a != 0)
+                cand = np.flatnonzero(
+                    (dirs_a == 1) if self.long_only else (dirs_a != 0)
+                )
                 cand = cand[
                     (cand >= start_idx)
                     & (cand < end_idx - 1)
@@ -328,6 +334,10 @@ class BacktestEngine:
                 continue
 
             direction, strength, size_fraction = signal
+
+            if self.long_only and direction != "long":
+                i += 1
+                continue
 
             if strength < self.min_signal_strength:
                 i += 1
@@ -392,8 +402,9 @@ class BacktestEngine:
             else:
                 gross_pnl = (exec_price - exit_price) / exec_price * size_usd
 
-            # Fees
-            fee_cost = size_usd * self.fee_rate * 2  # entry + exit
+            # Fees: proportional taker fee + fixed network/priority cost,
+            # both charged on entry and exit swaps
+            fee_cost = size_usd * self.fee_rate * 2 + self.fixed_cost_per_side * 2
 
             # Net P&L
             net_pnl = gross_pnl - fee_cost
