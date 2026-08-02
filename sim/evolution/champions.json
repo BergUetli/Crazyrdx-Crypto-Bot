@@ -1,5 +1,5 @@
 {
-  "updated_ts": 1785618110.427437,
+  "updated_ts": 1785662689.055639,
   "n": 8,
   "champions": [
     {
@@ -800,15 +800,20 @@
       "ts": 1785530143.94883
     },
     {
-      "genome_id": "cross_focus_se_focus_mu_8963",
-      "score": 115.68870479998864,
+      "genome_id": "focus_clone_cross_cross_cl_2310",
+      "score": 123.00149347168745,
       "signature": [
         "OR",
         [
           [
-            "taker_buy_ratio",
-            "<",
-            0.3653
+            "cross_trifecta",
+            "<=",
+            -0.328
+          ],
+          [
+            "sma_50",
+            ">",
+            82.9304
           ],
           [
             "price_vs_1d_sma",
@@ -819,16 +824,19 @@
             "funding_rate_roc",
             "<",
             0.0001
-          ],
-          [
-            "cross_trifecta",
-            "<=",
-            -0.328
           ]
         ],
         "equal_weight",
         0.4987,
         [
+          [
+            "profit_target",
+            0.021744
+          ],
+          [
+            "profit_target",
+            0.021744
+          ],
           [
             "profit_target",
             0.021744
@@ -841,7 +849,7 @@
           "cross_trifecta",
           "funding_rate_roc",
           "price_vs_1d_sma",
-          "taker_buy_ratio"
+          "sma_50"
         ],
         [
           [
@@ -857,8 +865,8 @@
             ">="
           ],
           [
-            "taker_buy_ratio",
-            "<="
+            "sma_50",
+            ">="
           ]
         ],
         [
@@ -868,9 +876,14 @@
       "genome": {
         "entry_conditions": [
           {
-            "indicator": "taker_buy_ratio",
-            "operator": "<",
-            "threshold": 0.36526240122242726
+            "indicator": "cross_trifecta",
+            "operator": "<=",
+            "threshold": -0.32795058386951936
+          },
+          {
+            "indicator": "sma_50",
+            "operator": ">",
+            "threshold": 82.93036863757519
           },
           {
             "indicator": "price_vs_1d_sma",
@@ -881,27 +894,10 @@
             "indicator": "funding_rate_roc",
             "operator": "<",
             "threshold": 0.00013630187539583757
-          },
-          {
-            "indicator": "cross_trifecta",
-            "operator": "<=",
-            "threshold": -0.32795058386951936
           }
         ],
         "entry_logic": "OR",
         "filters": [
-          {
-            "filter_type": "time_of_day",
-            "params": {
-              "hours": [
-                6,
-                11,
-                23,
-                5,
-                9
-              ]
-            }
-          },
           {
             "filter_type": "time_of_day",
             "params": {
@@ -922,25 +918,33 @@
           {
             "exit_type": "profit_target",
             "value": 0.021743737148536155
+          },
+          {
+            "exit_type": "profit_target",
+            "value": 0.021743737148536155
+          },
+          {
+            "exit_type": "profit_target",
+            "value": 0.021743737148536155
           }
         ],
-        "genome_id": "cross_focus_se_focus_mu_8963",
-        "generation": 3,
+        "genome_id": "focus_clone_cross_cross_cl_2310",
+        "generation": 0,
         "parent_ids": [
-          "focus_seed_focus_cross_mut_6554",
-          "focus_mut_clone_clone_clon_6463"
+          "cross_clone_cl_clone_cl_9971",
+          "mut_clone_cross_clone_cl_clone_se_5423_9331_4894"
         ],
-        "fitness": 67.8325671149234,
+        "fitness": 69.79115849055079,
         "backtest_results": {
-          "genome_id": "cross_focus_se_focus_mu_8963",
-          "fitness": 67.8325671149234,
-          "total_trades": 133,
-          "win_rate": 0.6842105263157895,
-          "total_pnl": 45.62333932955783,
-          "sharpe_ratio": 1.8920498026639192,
-          "max_drawdown": 0.06574868923810148,
-          "profit_factor": 2.0024984999137776,
-          "final_capital": 145.6233393295578
+          "genome_id": "focus_clone_cross_cross_cl_2310",
+          "fitness": 69.79115849055079,
+          "total_trades": 137,
+          "win_rate": 0.7153284671532847,
+          "total_pnl": 63.333190510505496,
+          "sharpe_ratio": 2.5358580758448728,
+          "max_drawdown": 0.045617078984051325,
+          "profit_factor": 2.508205727268273,
+          "final_capital": 163.33319051050552
         }
       },
       "gates_summary": {
@@ -966,11 +970,11 @@
           "passed": true
         }
       },
-      "ts": 1785617989.818284
+      "ts": 1785658391.706109
     },
     {
-      "genome_id": "mut_cross_clone_cl_clone_cl_1617_9852",
-      "score": 108.33249978660773,
+      "genome_id": "mut_clone_cross_clone_cl_clone_fo_1197_4037_5738",
+      "score": 96.53751718665168,
       "signature": [
         "AND",
         [
@@ -980,27 +984,31 @@
             0.0001
           ],
           [
+            "price_vs_1d_sma",
+            ">",
+            -366.1119
+          ],
+          [
             "funding_rate_roc",
             "<",
-            0.0001
+            0.0002
           ],
           [
             "price_vs_1d_sma",
-            ">=",
-            -366.1119
-          ],
-          [
-            "price_vs_1d_sma",
-            ">=",
-            -366.1119
+            ">",
+            -428.327
           ]
         ],
         "equal_weight",
-        0.4987,
+        0.3786,
         [
           [
             "profit_target",
             0.021744
+          ],
+          [
+            "profit_target",
+            0.04447
           ]
         ]
       ],
@@ -1029,22 +1037,22 @@
           {
             "indicator": "funding_rate_roc",
             "operator": "<",
-            "threshold": 0.0001343632919896246
-          },
-          {
-            "indicator": "funding_rate_roc",
-            "operator": "<",
             "threshold": 0.00013630187539583757
           },
           {
             "indicator": "price_vs_1d_sma",
-            "operator": ">=",
+            "operator": ">",
             "threshold": -366.11192258772735
           },
           {
+            "indicator": "funding_rate_roc",
+            "operator": "<",
+            "threshold": 0.0001537
+          },
+          {
             "indicator": "price_vs_1d_sma",
-            "operator": ">=",
-            "threshold": -366.11192258772735
+            "operator": ">",
+            "threshold": -428.3270099395995
           }
         ],
         "entry_logic": "AND",
@@ -1060,33 +1068,49 @@
                 9
               ]
             }
+          },
+          {
+            "filter_type": "time_of_day",
+            "params": {
+              "hours": [
+                6,
+                11,
+                23,
+                5,
+                9
+              ]
+            }
           }
         ],
         "sizing_method": "equal_weight",
-        "sizing_base": 0.4986580464379315,
+        "sizing_base": 0.3786041443391517,
         "sizing_max": 0.565657021825333,
         "exit_rules": [
           {
             "exit_type": "profit_target",
             "value": 0.021743737148536155
+          },
+          {
+            "exit_type": "profit_target",
+            "value": 0.04446989679273415
           }
         ],
-        "genome_id": "mut_cross_clone_cl_clone_cl_1617_9852",
+        "genome_id": "mut_clone_cross_clone_cl_clone_fo_1197_4037_5738",
         "generation": 12,
         "parent_ids": [
-          "cross_clone_cl_clone_cl_1617"
+          "clone_cross_clone_cl_clone_fo_1197_4037"
         ],
-        "fitness": 64.34661436668705,
+        "fitness": 59.52852723290235,
         "backtest_results": {
-          "genome_id": "mut_cross_clone_cl_clone_cl_1617_9852",
-          "fitness": 64.34661436668705,
-          "total_trades": 119,
-          "win_rate": 0.6638655462184874,
-          "total_pnl": 34.203253913977264,
-          "sharpe_ratio": 1.6332584362891986,
-          "max_drawdown": 0.0895030120418203,
-          "profit_factor": 1.8265501881543056,
-          "final_capital": 134.20325391397728
+          "genome_id": "mut_clone_cross_clone_cl_clone_fo_1197_4037_5738",
+          "fitness": 59.52852723290235,
+          "total_trades": 120,
+          "win_rate": 0.6583333333333333,
+          "total_pnl": 24.65242355185574,
+          "sharpe_ratio": 1.598010188633343,
+          "max_drawdown": 0.06839314408342417,
+          "profit_factor": 1.8128267360775094,
+          "final_capital": 124.6524235518557
         }
       },
       "gates_summary": {
@@ -1112,7 +1136,7 @@
           "passed": true
         }
       },
-      "ts": 1785617997.564095
+      "ts": 1785662568.364753
     }
   ],
   "dedupe": "structural_family_v1"
