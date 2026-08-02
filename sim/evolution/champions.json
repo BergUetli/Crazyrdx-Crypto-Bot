@@ -1,5 +1,5 @@
 {
-  "updated_ts": 1785665524.321169,
+  "updated_ts": 1785666029.826889,
   "n": 4,
   "champions": [
     {
@@ -342,20 +342,20 @@
       "ts": 1785662568.364753
     },
     {
-      "genome_id": "seed_cross_clone_cl_clone_cl__9817",
-      "score": 77.24482772975831,
+      "genome_id": "mut_clone_clone_clone_seed_seed_seed_cross_clone_cl_3547_1878_4025_3733_3023",
+      "score": 80.85262858588716,
       "signature": [
         "OR",
         [
           [
             "cex_dex_basis_bps",
-            ">",
-            9.4174
+            ">=",
+            9.6653
           ],
           [
             "price_vs_1d_sma",
             ">",
-            -453.1465
+            -587.4267
           ],
           [
             "sol_eth_ratio_roc_4h",
@@ -364,8 +364,13 @@
           ],
           [
             "cex_dex_basis_bps",
-            "<",
+            "<=",
             2.4472
+          ],
+          [
+            "price_roc_1d",
+            ">",
+            -324.9951
           ]
         ],
         "equal_weight",
@@ -381,7 +386,7 @@
           ],
           [
             "profit_target",
-            0.034912
+            0.012478
           ]
         ]
       ],
@@ -389,6 +394,7 @@
         "OR",
         [
           "cex_dex_basis_bps",
+          "price_roc_1d",
           "price_vs_1d_sma",
           "sol_eth_ratio_roc_4h"
         ],
@@ -402,11 +408,11 @@
             ">="
           ],
           [
-            "price_vs_1d_sma",
+            "price_roc_1d",
             ">="
           ],
           [
-            "sol_eth_ratio_roc_4h",
+            "price_vs_1d_sma",
             ">="
           ]
         ],
@@ -418,13 +424,13 @@
         "entry_conditions": [
           {
             "indicator": "cex_dex_basis_bps",
-            "operator": ">",
-            "threshold": 9.417449465663083
+            "operator": ">=",
+            "threshold": 9.665313908301567
           },
           {
             "indicator": "price_vs_1d_sma",
             "operator": ">",
-            "threshold": -453.1464941855762
+            "threshold": -587.4267429134741
           },
           {
             "indicator": "sol_eth_ratio_roc_4h",
@@ -433,8 +439,13 @@
           },
           {
             "indicator": "cex_dex_basis_bps",
-            "operator": "<",
+            "operator": "<=",
             "threshold": 2.447231918519625
+          },
+          {
+            "indicator": "price_roc_1d",
+            "operator": ">",
+            "threshold": -324.9951435135325
           }
         ],
         "entry_logic": "OR",
@@ -478,26 +489,25 @@
           },
           {
             "exit_type": "profit_target",
-            "value": 0.03491241347268214
+            "value": 0.012478395920468673
           }
         ],
-        "genome_id": "seed_cross_clone_cl_clone_cl__9817",
-        "generation": 0,
+        "genome_id": "mut_clone_clone_clone_seed_seed_seed_cross_clone_cl_3547_1878_4025_3733_3023",
+        "generation": 15,
         "parent_ids": [
-          "clone_clone_clone_cross_cross_cl_cross_cl_1649_1318_1431_2544",
-          "clone_clone_cross_cross_cl_cross_cl_1649_8145_6065"
+          "clone_clone_clone_seed_seed_seed_cross_clone_cl_3547_1878_4025_3733"
         ],
-        "fitness": 44.448995446743155,
+        "fitness": 41.37738589824977,
         "backtest_results": {
-          "genome_id": "seed_cross_clone_cl_clone_cl__9817",
-          "fitness": 44.448995446743155,
-          "total_trades": 100,
-          "win_rate": 0.55,
-          "total_pnl": 11.140596505426862,
-          "sharpe_ratio": 0.6098464579950178,
-          "max_drawdown": 0.18143319978207773,
-          "profit_factor": 1.2280150499185662,
-          "final_capital": 111.14059650542686
+          "genome_id": "mut_clone_clone_clone_seed_seed_seed_cross_clone_cl_3547_1878_4025_3733_3023",
+          "fitness": 41.37738589824977,
+          "total_trades": 97,
+          "win_rate": 0.5567010309278351,
+          "total_pnl": 16.578490678923977,
+          "sharpe_ratio": 0.9474011705700736,
+          "max_drawdown": 0.1365562524151306,
+          "profit_factor": 1.377711804396108,
+          "final_capital": 116.57849067892397
         }
       },
       "gates_summary": {
@@ -505,6 +515,9 @@
           "passed": true
         },
         "oos": {
+          "passed": true
+        },
+        "benchmark": {
           "passed": true
         },
         "walk_forward": {
@@ -523,7 +536,7 @@
           "passed": true
         }
       },
-      "ts": 1785665524.3194911
+      "ts": 1785665870.7400808
     },
     {
       "genome_id": "seed_seed_seed_seed_mut_clone_4991",
