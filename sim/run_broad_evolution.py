@@ -25,6 +25,7 @@ from evolution.promotion_funnel import (
     funnel_population_top,
     get_total_trials,
     log_trials,
+    revalidate_champions,
 )
 from evolution.kill_archive import get_archive, reload_archive
 from layer1.historical_feature_engine_1h import get_historical_features_1h
@@ -91,6 +92,11 @@ def main():
     arch = reload_archive()
     seeded = arch.bootstrap_from_funnel()
     print(f"Kill archive: {arch.size} neighborhoods (seeded +{seeded} from past funnel fails)")
+
+    # Champions promoted under older gate sets must survive the CURRENT
+    # gauntlet (incl. the benchmark/beta gate) or leave the board.
+    reval = revalidate_champions(features, n_trials_context=get_total_trials())
+    print(f"Champion revalidation: kept={reval['kept']} demoted={reval['demoted']}")
 
     cycle = 0
     while True:

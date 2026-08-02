@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-02 (third pass) — Champion revalidation
+
+The 4 champions promoted before the beta gate existed are confirmed
+mostly-beta (always-true conditions like `price_vs_1d_sma > -366`); they were
+still seeding warm-starts and blocking their families. New
+`revalidate_champions()` runs at search startup: every board member is re-run
+through the CURRENT 9-gate funnel; failures move to
+`champions_unvalidated.json` with the gate they died at, and their families
+enter the kill archive (which also stops warm-start from seeding them).
+Passers stay. Idempotent. Suite now 66 checks.
+
+
 ## 2026-08-02 (later) — Beta filter: the exam now rejects "long in an up-market" disguised as skill
 
 Post-deploy, 5/5 candidates passed the funnel twice in a row — suspicious right

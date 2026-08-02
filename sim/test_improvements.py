@@ -641,6 +641,47 @@ def test_benchmark_gate(features):
             pf.CHAMPIONS_PATH = old
 
 
+def test_champion_revalidation(features):
+    print("\n[14] champion revalidation under current gates")
+    import evolution.promotion_funnel as pf
+    from evolution.genome import random_genome
+    import tempfile as tf
+    random.seed(61)
+
+    g_pass, g_fail = random_genome(), random_genome()
+
+    class StubFunnel:
+        def __init__(self, feats):
+            pass
+        def run(self, genome, n_trials_context=None, verbose=True):
+            ok = genome.genome_id == g_pass.genome_id
+            return {"all_passed": ok,
+                    "failed_at": None if ok else "benchmark"}
+
+    with tf.TemporaryDirectory() as td:
+        old_path, old_funnel = pf.CHAMPIONS_PATH, pf.PromotionFunnel
+        try:
+            pf.CHAMPIONS_PATH = Path(td) / "champions.json"
+            pf.PromotionFunnel = StubFunnel
+            pf.CHAMPIONS_PATH.write_text(json.dumps({"champions": [
+                {"genome_id": g_pass.genome_id, "score": 80, "genome": g_pass.to_dict()},
+                {"genome_id": g_fail.genome_id, "score": 70, "genome": g_fail.to_dict()},
+            ]}))
+            out = pf.revalidate_champions(features, verbose=False)
+            check("one kept, one demoted", out == {"kept": 1, "demoted": 1}, str(out))
+            kept = json.loads(pf.CHAMPIONS_PATH.read_text())["champions"]
+            check("passer stays on board",
+                  [c["genome_id"] for c in kept] == [g_pass.genome_id])
+            unval = json.loads((Path(td) / "champions_unvalidated.json").read_text())
+            check("failure recorded with gate name",
+                  unval["champions"][0]["demoted_at_gate"] == "benchmark")
+            out2 = pf.revalidate_champions(features, verbose=False)
+            check("revalidation idempotent for passers",
+                  out2 == {"kept": 1, "demoted": 0}, str(out2))
+        finally:
+            pf.CHAMPIONS_PATH, pf.PromotionFunnel = old_path, old_funnel
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -656,6 +697,7 @@ def main():
     with tempfile.TemporaryDirectory() as td:
         test_champion_flush(Path(td))
     test_benchmark_gate(features)
+    test_champion_revalidation(features)
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))
