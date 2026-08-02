@@ -41,6 +41,26 @@ RESULTS.mkdir(parents=True, exist_ok=True)
 STOP = SIM / "STOP_EVOLUTION"
 
 
+def prune_dir(path: Path, pattern: str, keep: int) -> int:
+    """Delete oldest files matching pattern, keeping the newest `keep`.
+
+    Unattended months must not fill the disk: population and funnel-result
+    files are superseded records; champions/ledger hold what matters.
+    """
+    try:
+        files = sorted(path.glob(pattern))
+    except Exception:
+        return 0
+    removed = 0
+    for f in files[: max(0, len(files) - keep)]:
+        try:
+            f.unlink()
+            removed += 1
+        except Exception:
+            pass
+    return removed
+
+
 def load_seed_genomes(max_seeds: int = 5):
     """Warm-start seeds: past champions + last cycle's best genome."""
     from evolution.genome import StrategyGenome
@@ -114,6 +134,36 @@ def main():
                     features = fresh
             except Exception as e:
                 print(f"  Feature reload failed (keeping previous): {e}")
+
+        # Unattended safety: warn loudly when market data stops arriving.
+        # The search still runs, but it learns nothing new and the forward
+        # ledger starves — this must be visible, not silent.
+        data_age_h = (time.time() - features[-1]["ts"] / 1000.0) / 3600.0
+        if data_age_h > 6:
+            print(
+                f"  WARNING: newest candle is {data_age_h:.1f}h old — "
+                f"the data pipeline may be dead. Check the downloader job."
+            )
+
+        # A transient error (sqlite lock, network blip, one bad genome) must
+        # cost one cycle, never the whole unattended month.
+        try:
+            run_one_cycle(cycle, features)
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            write_activity({"phase": "cycle_error", "cycle": cycle, "error": str(e)})
+            print(f"  CYCLE {cycle} FAILED ({e}) — sleeping 60s, then continuing")
+            time.sleep(60)
+        time.sleep(5)
+
+
+def run_one_cycle(cycle: int, features: list) -> None:
+    """One full search cycle: evolve, funnel, persist, ledger, prune."""
+    engine = None
+    try:
         arch = get_archive()
         write_activity({
             "phase": "cycle_start",
@@ -256,7 +306,21 @@ def main():
             f"promoted={n_promoted}/{len(funnel_results)} trials={total_trials} "
             f"kill_arch={get_archive().size} kill_hits={getattr(engine, 'kill_hits', 0)}"
         )
-        time.sleep(5)
+
+        # Disk retention: superseded records must not fill the disk over an
+        # unattended month (~36 population + ~180 funnel files per day).
+        n_pop = prune_dir(RESULTS, "evolution_*.json", keep=400)
+        n_fun = prune_dir(SIM / "evolution" / "funnel_results", "funnel_*.json", keep=1000)
+        if n_pop or n_fun:
+            print(f"  Pruned {n_pop} population + {n_fun} funnel files")
+    finally:
+        # evolve_continuous shuts its pool down on clean exit; this covers
+        # exception paths so worker processes never leak across cycles.
+        if engine is not None:
+            try:
+                engine.shutdown_pool()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

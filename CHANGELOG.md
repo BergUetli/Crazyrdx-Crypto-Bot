@@ -2,6 +2,27 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-02 (fourth pass) — Walk-away hardening: survive an unattended month
+
+Month-scale review for fatal operational flaws before unattended running:
+
+- **Cycle-level crash guard** (`run_broad_evolution.py`): one transient error
+  (sqlite lock, network blip, one bad genome) previously killed the process
+  and silently ended the month. A failed cycle now logs, waits 60s, and the
+  next cycle starts. STOP_EVOLUTION still exits cleanly; worker pools are
+  shut down on exception paths so processes never leak.
+- **Data-starvation alarm**: if the newest candle is older than 6h, every
+  cycle prints a loud WARNING that the downloader may be dead (the search
+  keeps running but learns nothing new and the ledger starves).
+- **Disk retention**: population files pruned to the newest 400 and funnel
+  result files to the newest 1000, every cycle (~36 + ~180 files/day would
+  otherwise accumulate unattended).
+- **Ledger bloat guards**: forward-scoring is skipped entirely when no new
+  candles arrived since the last scoring run; champion freezes are deduped
+  against same-DNA-within-24h and capped at 12/day.
+- Suite now 69 checks.
+
+
 ## 2026-08-02 (third pass) — Champion revalidation
 
 The 4 champions promoted before the beta gate existed are confirmed

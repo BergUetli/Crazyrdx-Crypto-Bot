@@ -72,6 +72,7 @@ def _conn() -> sqlite3.Connection:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vint_kind_day ON vintages(kind, cohort_day)")
+    conn.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v REAL)")
     return conn
 
 
@@ -102,13 +103,19 @@ def freeze_cycle(best_genome, features: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     conn = _conn()
     try:
-        # Champion: skip if identical DNA to the most recently frozen champion
+        # Champion: skip if the same DNA was frozen within the last 24h
+        # (oscillating best genomes must not bloat the ledger), and cap
+        # champion freezes at 12/day regardless.
         sig = _signature_str(best_genome)
-        row = conn.execute(
-            "SELECT signature FROM vintages WHERE kind='champion' "
-            "ORDER BY id DESC LIMIT 1"
+        dup = conn.execute(
+            "SELECT 1 FROM vintages WHERE kind='champion' AND signature=? "
+            "AND frozen_wall_ts > ?", (sig, now - 86400)
         ).fetchone()
-        if row is None or row[0] != sig:
+        n_today = conn.execute(
+            "SELECT COUNT(*) FROM vintages WHERE kind='champion' "
+            "AND frozen_wall_ts > ?", (now - 86400,)
+        ).fetchone()[0]
+        if dup is None and n_today < 12:
             conn.execute(
                 "INSERT INTO vintages (kind, genome_id, genome_json, signature, "
                 "frozen_wall_ts, frozen_data_ts, cohort_day) VALUES (?,?,?,?,?,?,?)",
@@ -200,10 +207,19 @@ def score_vintages(features: List[Dict[str, Any]], verbose: bool = False) -> int
     from evolution.evaluator import GenomeEvaluator
     from evolution.genome import StrategyGenome
 
-    ev = GenomeEvaluator(features, augment=False)
     conn = _conn()
     scored = 0
     try:
+        # Skip entirely when no new candles arrived since the last scoring
+        # run — re-scoring identical windows is pure waste over a month.
+        newest_ts = float(features[-1]["ts"])
+        row = conn.execute(
+            "SELECT v FROM meta WHERE k='last_scored_data_ts'"
+        ).fetchone()
+        if row is not None and newest_ts <= float(row[0]):
+            return 0
+
+        ev = GenomeEvaluator(features, augment=False)
         rows = conn.execute(
             "SELECT id, kind, genome_json, frozen_data_ts FROM vintages"
         ).fetchall()
@@ -230,6 +246,10 @@ def score_vintages(features: List[Dict[str, Any]], verbose: bool = False) -> int
                  int(trades), float(net), pnl30, float(dd or 0.0)),
             )
             scored += 1
+        conn.execute(
+            "INSERT OR REPLACE INTO meta (k, v) VALUES ('last_scored_data_ts', ?)",
+            (newest_ts,),
+        )
         conn.commit()
     finally:
         conn.close()
