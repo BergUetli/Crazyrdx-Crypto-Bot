@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-02 (later) — Beta filter: the exam now rejects "long in an up-market" disguised as skill
+
+Post-deploy, 5/5 candidates passed the funnel twice in a row — suspicious right
+after costs got harsher. Diagnosis: two holes, both fixed.
+
+- **Benchmark (beta) gate** — new funnel Gate 2b. In a rising market ANY
+  long-only strategy shows positive PnL just by being exposed; the funnel
+  checked absolute profit only. Now a candidate's OOS profit must beat an
+  exposure-matched market benchmark (window return x its own time-in-market x
+  its own average position size, minus the same costs) by >=$0.25 and >=25%
+  (`LAB_BENCH_MIN_EXCESS_USD`, `LAB_BENCH_EXCESS_FACTOR` in
+  success_criteria.py). Matching the benchmark = beta, not edge -> REJECT.
+- **Champion re-funnel skip** — warm-started champions re-entered the funnel
+  every cycle and got re-promoted (the oscillating promoted=5/5 noise).
+  Families already on the champion board are now skipped in candidate
+  selection (logged as champion_skipped=N).
+- Dashboard: the exam is now 9 gates; Chart C scale, captions, and the
+  "wall" labels include the beta filter. Historical gate-depth values shift
+  by +1 for gates after OOS (walk_forward onward) — expect a small step in
+  old Chart C bars.
+- Suite now 62 checks (benchmark math, gate thresholds, flat-market pass,
+  champion-skip).
+
+**Note on existing champions:** the 4 champions promoted before this gate
+existed were never beta-tested. They stay on the board but should be treated
+as unvalidated until the vintage ledger scores them against buy-and-hold on
+forward data.
+
+
 ## 2026-08-02 — Realistic economics: the search now optimizes for executable, cost-surviving strategies
 
 Strategy-level audit found the simulator was rewarding trading styles that

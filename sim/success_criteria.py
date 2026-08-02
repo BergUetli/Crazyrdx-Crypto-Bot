@@ -31,6 +31,12 @@ FIXED_COST_PER_SIDE_USD = 0.03
 # Jupiter is spot: SOL/USDC cannot be shorted there. The simulator only takes
 # long entries so discovered edges are actually executable on the live venue.
 LONG_ONLY = True
+# Benchmark (beta) gate: in a rising market, any long-only strategy shows
+# positive PnL just by being exposed. OOS profit must beat what the SAME
+# exposure (time-in-market x position size) would have earned from market
+# drift alone, by at least this margin.
+LAB_BENCH_MIN_EXCESS_USD = 0.25   # at least $0.25 above the exposure benchmark
+LAB_BENCH_EXCESS_FACTOR = 1.25    # and at least 25% above it when it is positive
 
 # ---------------------------------------------------------------------------
 # Stage 1 — LAB (discovery / funnel)
