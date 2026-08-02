@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-02 — Realistic economics: the search now optimizes for executable, cost-surviving strategies
+
+Strategy-level audit found the simulator was rewarding trading styles that
+cannot make money live. Three essential fixes:
+
+- **Fixed per-trade costs** (`FIXED_COST_PER_SIDE_USD = 0.03` in
+  `success_criteria.py`): every simulated swap now pays a fixed
+  network/priority-fee cost in addition to the proportional taker fee. On
+  $25–50 positions this is 6–25 bps per side — the thing that makes
+  2,000-trade churn strategies structurally unprofitable on a $100 book. The
+  vintage-ledger baselines pay the same costs, so comparisons stay fair.
+  Evolution will now be pushed toward selective, slower strategies.
+- **Long-only simulation** (`LONG_ONLY = True`): Jupiter is a spot venue —
+  SOL/USDC cannot be shorted there, yet the backtester was taking short
+  trades roughly half the time. Simulated shorts were unexecutable fiction;
+  entries are now long-only (short signals still work as exit/reversal
+  triggers, which spot can execute). Flip the flag if execution ever moves to
+  a perps venue.
+- **Legacy champion flush** (`flush_legacy_champions` in
+  `promotion_funnel.py`, runs at search startup): all 8 stored "champions"
+  carried bug-era 1e17 scores and threshold-bug DNA; they were seeding the
+  new warm-start every cycle. They are moved to `champions_legacy.json`
+  (kept for history) and warm-start seeding also filters scores > 1e6 as a
+  second line of defense.
+
+Suite extended to 56 checks (fixed-cost accounting per trade, long-only
+enforcement with a shorts-existed control, flush + idempotency).
+
 ## 2026-08-01 (third pass) — Vectorized signal engine
 
 - **New `sim/layer1/fast_signals.py`**: entry signals for every strategy

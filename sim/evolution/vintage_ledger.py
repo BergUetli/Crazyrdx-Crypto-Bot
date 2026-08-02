@@ -37,6 +37,10 @@ RANDOM_COHORT_MIN_GAP_S = 20 * 3600  # at most one control cohort per ~day
 MIN_FORWARD_BARS = 72                # need ≥3 days of unseen 1h candles to score
 BASELINE_BOOK_FRACTION = 0.5         # baselines invest 50% of the $100 book
 FEE_RATE = 0.00022                   # same 2.2 bps/side as the search
+try:
+    from success_criteria import FIXED_COST_PER_SIDE_USD as FIXED_COST
+except Exception:
+    FIXED_COST = 0.03
 
 
 def _conn() -> sqlite3.Connection:
@@ -150,7 +154,7 @@ def _baseline_scores(kind: str, fwd: List[Dict[str, Any]]) -> Dict[str, float]:
     book = 100.0 * BASELINE_BOOK_FRACTION
     if kind == "baseline_bh":
         gross = (closes[-1] / closes[0] - 1.0) * book
-        net = gross - book * FEE_RATE * 2
+        net = gross - book * FEE_RATE * 2 - FIXED_COST * 2
         # equity path for drawdown
         equity = [book * (c / closes[0]) for c in closes]
     else:  # baseline_sma: long when sma_5 > sma_20, flat otherwise
@@ -173,7 +177,7 @@ def _baseline_scores(kind: str, fwd: List[Dict[str, Any]]) -> Dict[str, float]:
             equity.append(book + eq)
         if pos_entry is not None:
             net += (closes[-1] / pos_entry - 1.0) * book
-        net -= n_switches * book * FEE_RATE
+        net -= n_switches * (book * FEE_RATE + FIXED_COST)
     peak, max_dd = max(equity[0], 1e-9), 0.0
     for v in equity:
         peak = max(peak, v)

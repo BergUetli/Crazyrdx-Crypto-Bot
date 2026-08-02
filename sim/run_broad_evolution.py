@@ -21,6 +21,7 @@ from pathlib import Path
 
 from evolution.evaluator import EvolutionEngine, write_activity
 from evolution.promotion_funnel import (
+    flush_legacy_champions,
     funnel_population_top,
     get_total_trials,
     log_trials,
@@ -48,10 +49,15 @@ def load_seed_genomes(max_seeds: int = 5):
     if champs_path.exists():
         try:
             champs = json.loads(champs_path.read_text()).get("champions", [])
-            for c in champs[:max_seeds]:
+            for c in champs:
+                # Never seed from bug-era entries (belt-and-braces with flush)
+                if abs(float(c.get("score") or 0)) > 1e6:
+                    continue
                 g = c.get("genome")
                 if g:
                     seeds.append(StrategyGenome.from_dict(g))
+                if len(seeds) >= max_seeds:
+                    break
         except Exception:
             pass
     best_path = SIM / "evolution" / "best_genome_latest.json"
@@ -74,6 +80,12 @@ def main():
     for line in plain_english_summary().splitlines():
         print(f"  {line}")
     print(f"Prior trials logged: {get_total_trials()}")
+
+    # One-time migration: bug-era champions (1e17 scores) must not seed
+    # warm-starts; park them in champions_legacy.json
+    n_flushed = flush_legacy_champions()
+    if n_flushed:
+        print(f"Archived {n_flushed} legacy (bug-era) champions to champions_legacy.json")
 
     # Bootstrap kill archive from historical funnel rejects (once per process)
     arch = reload_archive()
