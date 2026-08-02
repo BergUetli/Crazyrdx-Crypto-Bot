@@ -409,11 +409,20 @@ def test_vintage_ledger(features, tmp: Path):
               and vl._percentile_of(0.0, [1, 2, 3, 4]) == 0.0
               and abs(vl._percentile_of(2.5, [1, 2, 3, 4]) - 50.0) < 1e-9)
 
-        # Scoring is idempotent (re-run replaces, does not duplicate)
+        # Re-scoring with NO new data is skipped entirely (month-scale waste)
         n2 = vl.score_vintages(features)
         summ2 = vl.ledger_summary()
-        check("re-scoring idempotent", n2 == n
-              and len(summ2["cohorts"]) == len(summ["cohorts"]))
+        check("re-scoring skipped when no new candles", n2 == 0
+              and len(summ2["cohorts"]) == len(summ["cohorts"]), f"n2={n2}")
+
+        # Champion freezes capped at 12/day (ledger bloat guard)
+        from evolution.genome import random_genome as _rg
+        for _ in range(20):
+            vl.freeze_cycle(_rg(), features[:300])
+        import sqlite3 as _sq
+        n_champ = _sq.connect(str(vl.LEDGER_DB)).execute(
+            "SELECT COUNT(*) FROM vintages WHERE kind='champion'").fetchone()[0]
+        check(f"champion freezes capped (n={n_champ})", n_champ <= 12)
 
         # Dashboard integration renders
         import dashboard as dbmod
@@ -641,6 +650,22 @@ def test_benchmark_gate(features):
             pf.CHAMPIONS_PATH = old
 
 
+def test_prune_dir():
+    print("\n[15] disk retention pruning")
+    import run_broad_evolution as rbe
+    import tempfile as tf
+    with tf.TemporaryDirectory() as td:
+        d = Path(td)
+        for i in range(30):
+            (d / f"evolution_{1000 + i}.json").write_text("{}")
+        (d / "latest.json").write_text("{}")
+        removed = rbe.prune_dir(d, "evolution_*.json", keep=10)
+        left = sorted(f.name for f in d.glob("evolution_*.json"))
+        check("removed 20, kept newest 10", removed == 20 and len(left) == 10
+              and left[0] == "evolution_1020.json")
+        check("non-matching files untouched", (d / "latest.json").exists())
+
+
 def test_champion_revalidation(features):
     print("\n[14] champion revalidation under current gates")
     import evolution.promotion_funnel as pf
@@ -698,6 +723,7 @@ def main():
         test_champion_flush(Path(td))
     test_benchmark_gate(features)
     test_champion_revalidation(features)
+    test_prune_dir()
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))
