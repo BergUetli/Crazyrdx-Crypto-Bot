@@ -37,6 +37,8 @@ from success_criteria import (
     FEE_RATE_STRESS_MID,
     LAB_BENCH_EXCESS_FACTOR,
     LAB_BENCH_MIN_EXCESS_USD,
+    LAB_CROSS_ASSET_ENFORCE,
+    LAB_EMBARGO_BARS,
     LAB_DSR_ALT_OOS_PNL,
     LAB_DSR_ALT_WF_RATE,
     LAB_DSR_COLD_START_TRIALS,
@@ -279,11 +281,14 @@ class PromotionFunnel:
         if not feas_pass:
             return self._fail(name, genome, gates, "feasibility")
 
-        # Gate 2: locked OOS (last third), IS = first two thirds
+        # Gate 2: locked OOS (last third), IS = first two thirds,
+        # with an embargo gap so rolling features can't leak IS info into OOS
         n = len(self.features)
         split = max(100, (2 * n) // 3)
         is_feats = self.features[:split]
-        oos_feats = self.features[split:]
+        oos_feats = self.features[split + LAB_EMBARGO_BARS:]
+        if len(oos_feats) < 80:
+            oos_feats = self.features[split:]
         is_res = self._raw(genome, is_feats)
         oos_res = self._raw(genome, oos_feats)
         is_d = _result_dict(is_res)
@@ -327,6 +332,14 @@ class PromotionFunnel:
         }
         if not bench_pass:
             return self._fail(name, genome, gates, "benchmark")
+
+        # Gate 2c: cross-asset transfer (ADVISORY unless LAB_CROSS_ASSET_ENFORCE).
+        # Scale-free strategies are also backtested on BTC/ETH; edges that
+        # exist across large coins are far likelier real than SOL-only flukes.
+        xa = self._cross_asset_check(genome)
+        gates["cross_asset"] = xa
+        if LAB_CROSS_ASSET_ENFORCE and not xa.get("would_pass", True):
+            return self._fail(name, genome, gates, "cross_asset")
 
         # Gate 3: majority walk-forward (chronological folds, raw PnL > 0)
         fold_n = max(3, self.wf_folds)
@@ -477,6 +490,62 @@ class PromotionFunnel:
         self._save(out)
         self._maybe_archive_champion(out)
         return out
+
+    # Conditions on these raw-scale indicators don't transfer across assets
+    # (a SOL price/volume threshold is meaningless on BTC); genomes using them
+    # skip the cross-asset check. ROC/ratio/bps features transfer fine.
+    SCALE_BOUND_INDICATORS = {
+        "close", "volume", "sma_5", "sma_20", "sma_50",
+        "close_lag_1", "close_lag_2", "close_lag_3", "volume_lag_1",
+        "volume_weighted_price", "sol_btc_ratio", "sol_eth_ratio",
+    }
+
+    def _cross_asset_check(self, genome: StrategyGenome) -> Dict[str, Any]:
+        """Backtest the genome on BTC/ETH features; advisory verdict.
+
+        MEANREV/BREAKOUT/TREND use internally normalized math and always
+        transfer; AND/OR/TFT transfer only if all condition indicators are
+        scale-free. would_pass: ≥1 other asset profitable (with ≥10 trades)
+        and no tested asset losing more than 10% of the book.
+        """
+        if genome.entry_logic in ("AND", "OR", "TFT"):
+            used = {c.indicator for c in (genome.entry_conditions or [])}
+            bound = used & self.SCALE_BOUND_INDICATORS
+            if bound:
+                return {"passed": True, "would_pass": True,
+                        "skipped": f"scale-bound conditions: {sorted(bound)}"}
+        rows = {}
+        n_pos = n_tested = 0
+        worst = 0.0
+        for pair in ("BTC/USDC", "ETH/USDC"):
+            try:
+                from layer1.historical_feature_engine_1h import (
+                    get_historical_features_1h,
+                )
+                feats = get_historical_features_1h(pair, limit=len(self.features))
+                if len(feats) < 500:
+                    rows[pair] = {"skipped": "insufficient data"}
+                    continue
+                r = self._raw(genome, feats)
+                rows[pair] = {
+                    "total_pnl": float(r.total_pnl),
+                    "total_trades": int(r.total_trades),
+                    "max_drawdown": float(r.max_drawdown or 0.0),
+                }
+                if r.total_trades >= 10:
+                    n_tested += 1
+                    worst = min(worst, float(r.total_pnl))
+                    if r.total_pnl > 0:
+                        n_pos += 1
+            except Exception as e:
+                rows[pair] = {"error": str(e)}
+        would_pass = n_tested == 0 or (n_pos >= 1 and worst > -0.10 * BOOK_USD)
+        return {
+            "passed": True if not LAB_CROSS_ASSET_ENFORCE else would_pass,
+            "would_pass": would_pass,
+            "enforced": LAB_CROSS_ASSET_ENFORCE,
+            "assets": rows,
+        }
 
     def _score(self, gates: Dict[str, Any], full_d: Dict[str, Any]) -> float:
         """Composite score for ranking survivors. PnL-first, capped Sharpe."""

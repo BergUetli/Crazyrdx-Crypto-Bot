@@ -2,6 +2,36 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-02 (fifth pass) — Research-backed upgrades: embargo, cross-asset check, derivatives data
+
+Based on a literature/industry research pass (Liu-Tsyvinski-Wu factors, funding
+carry & funding-extreme evidence, Man AHL crypto trend, liquidation/OI
+mechanics — see conversation/CHANGELOG history):
+
+- **IS/OOS embargo** (`LAB_EMBARGO_BARS = 24`): out-of-sample windows now
+  start 24 bars after the in-sample split in both the evaluator and the
+  funnel, so rolling features cannot leak training information across the
+  boundary.
+- **Advisory cross-asset gate** (funnel Gate 2c): scale-free candidates are
+  also backtested on BTC/ETH features; results recorded in gates.cross_asset
+  with a would_pass verdict. NEVER blocks promotion yet
+  (`LAB_CROSS_ASSET_ENFORCE = False`) — a month of transfer statistics
+  accumulates first. Genomes with raw-scale conditions (price/volume levels)
+  skip the check as non-transferable.
+- **New `sim/layer1/derivatives_collector.py`**: collects free Binance
+  futures data (funding rate history, hourly open interest, top-trader and
+  global long/short ratios, taker buy/sell ratio) for SOL/BTC/ETH into
+  `sim/data/derivatives.db` (gitignored). These are the evidence-backed
+  predictor families (funding extremes -> mean reversion, OI build-ups ->
+  cascade risk). Binance retains only ~30 days of the /futures/data metrics,
+  so this must run on a schedule — every missed month is unrecoverable.
+  Verified live: 18/18 feeds. Feature-engine integration is deliberately
+  deferred; collection starts now so history exists later.
+- None of this resets accumulated learning: kill archive, champions, trial
+  counts, and the vintage ledger all persist unchanged.
+- Suite now 76 checks.
+
+
 ## 2026-08-02 (fourth pass) — Walk-away hardening: survive an unattended month
 
 Month-scale review for fatal operational flaws before unattended running:

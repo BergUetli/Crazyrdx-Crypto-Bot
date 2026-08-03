@@ -37,6 +37,14 @@ LONG_ONLY = True
 # drift alone, by at least this margin.
 LAB_BENCH_MIN_EXCESS_USD = 0.25   # at least $0.25 above the exposure benchmark
 LAB_BENCH_EXCESS_FACTOR = 1.25    # and at least 25% above it when it is positive
+# Embargo between in-sample and out-of-sample windows: candidates must not be
+# scored on bars adjacent to their training data (boundary leakage hygiene).
+LAB_EMBARGO_BARS = 24
+# Cross-asset check: candidate also backtested on BTC/ETH features. Advisory
+# for now (recorded, never blocks); flip to True to enforce once a month of
+# transfer statistics exists. Literature: momentum-style edges concentrate in
+# large coins collectively, so surviving on all three is strong evidence.
+LAB_CROSS_ASSET_ENFORCE = False
 
 # ---------------------------------------------------------------------------
 # Stage 1 — LAB (discovery / funnel)

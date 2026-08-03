@@ -27,6 +27,7 @@ from success_criteria import (
     FITNESS_MAX as SC_FITNESS_MAX,
     FITNESS_MIN as SC_FITNESS_MIN,
     FIXED_COST_PER_SIDE_USD,
+    LAB_EMBARGO_BARS,
     LAB_MIN_TRADES_FULL,
     LAB_MIN_TRADES_OOS,
     LONG_ONLY,
@@ -110,9 +111,11 @@ class GenomeEvaluator:
         self._current_genome: Optional[StrategyGenome] = None
         # Stable OOS/IS slices (computed once so the fast-signal column cache
         # can key on list identity instead of rebuilding per genome).
+        # An embargo gap between IS and OOS prevents boundary leakage: rolling
+        # features near the split contain IS information.
         n = len(self.features)
         self._split = max(100, (2 * n) // 3)
-        self._oos_features = self.features[self._split:]
+        self._oos_features = self.features[self._split + LAB_EMBARGO_BARS:]
         if len(self._oos_features) < 80:
             self._oos_features = self.features[n // 2:]
         self._is_features = self.features[: self._split]
