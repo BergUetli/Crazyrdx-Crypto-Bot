@@ -34,7 +34,15 @@ from config import DATA_DIR
 
 DB_DERIVS = DATA_DIR / "derivatives.db"
 FAPI = "https://fapi.binance.com"
-SYMBOLS = ["SOLUSDT", "BTCUSDT", "ETHUSDT"]
+# Liquid majors only: wide enough for cross-sectional strategies and robust
+# cross-asset validation, no manipulation-prone small caps. Spot candles can
+# be backfilled anytime, but these futures metrics have ~30-day retention —
+# collect broadly NOW, decide what to use later.
+SYMBOLS = [
+    "SOLUSDT", "BTCUSDT", "ETHUSDT",
+    "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT",
+    "AVAXUSDT", "LINKUSDT", "LTCUSDT",
+]
 
 # metric -> (path, params, timestamp field, value field)
 ENDPOINTS: Dict[str, Tuple[str, Dict[str, Any], str, str]] = {
