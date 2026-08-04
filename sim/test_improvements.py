@@ -707,6 +707,74 @@ def test_champion_revalidation(features):
             pf.CHAMPIONS_PATH, pf.PromotionFunnel = old_path, old_funnel
 
 
+def test_embargo_and_cross_asset(features):
+    print("\n[16] embargo + advisory cross-asset gate")
+    from success_criteria import LAB_EMBARGO_BARS
+    from evolution.evaluator import GenomeEvaluator
+    import evolution.promotion_funnel as pf
+    from evolution.genome import random_genome, EntryCondition
+    import layer1.historical_feature_engine_1h as hfe
+    random.seed(71)
+
+    ev = GenomeEvaluator(features, augment=False)
+    gap = ev._oos_features[0]["ts"] - ev._is_features[-1]["ts"]
+    check(f"embargo gap between IS and OOS ({gap/3_600_000:.0f} bars)",
+          gap >= LAB_EMBARGO_BARS * 3_600_000)
+
+    funnel = pf.PromotionFunnel(features)
+    # Scale-bound genome skips the check
+    g1 = random_genome()
+    g1.entry_logic = "AND"
+    g1.entry_conditions = [EntryCondition("sma_50", ">", 80.0)]
+    xa1 = funnel._cross_asset_check(g1)
+    check("scale-bound genome skips cross-asset", "skipped" in xa1
+          and xa1["passed"] and xa1["would_pass"])
+
+    # Scale-free genome is tested on stubbed BTC/ETH features
+    g2 = random_genome()
+    g2.entry_logic = "MEANREV"
+    old_fn = hfe.get_historical_features_1h
+    try:
+        hfe.get_historical_features_1h = lambda pair, **kw: features[:600]
+        xa2 = funnel._cross_asset_check(g2)
+    finally:
+        hfe.get_historical_features_1h = old_fn
+    check("scale-free genome tested on both assets",
+          set(xa2["assets"].keys()) == {"BTC/USDC", "ETH/USDC"})
+    check("advisory mode never blocks", xa2["passed"] is True
+          and xa2["enforced"] is False)
+
+
+def test_derivatives_collector():
+    print("\n[17] derivatives collector storage")
+    import tempfile as tf
+    import layer1.derivatives_collector as dc
+    with tf.TemporaryDirectory() as td:
+        old = dc.DB_DERIVS
+        try:
+            dc.DB_DERIVS = Path(td) / "derivs.db"
+            conn = dc.init_db()
+            rows = [
+                {"fundingTime": 1000, "fundingRate": "0.0001"},
+                {"fundingTime": 2000, "fundingRate": "-0.0002"},
+                {"fundingTime": "bad", "fundingRate": "0.1"},  # skipped
+            ]
+            n = dc.store_rows(conn, "SOLUSDT", "funding_rate", rows,
+                              "fundingTime", "fundingRate")
+            n2 = dc.store_rows(conn, "SOLUSDT", "funding_rate", rows,
+                               "fundingTime", "fundingRate")  # upsert, no dupes
+            conn.commit()
+            total = conn.execute("SELECT COUNT(*) FROM derivs").fetchone()[0]
+            val = conn.execute(
+                "SELECT value FROM derivs WHERE ts=2000").fetchone()[0]
+            conn.close()
+            check("stores valid rows, skips malformed", n == 2 and total == 2)
+            check("re-run is idempotent (upsert)", n2 == 2 and total == 2)
+            check("values parsed as floats", abs(val - (-0.0002)) < 1e-12)
+        finally:
+            dc.DB_DERIVS = old
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -724,6 +792,8 @@ def main():
     test_benchmark_gate(features)
     test_champion_revalidation(features)
     test_prune_dir()
+    test_embargo_and_cross_asset(features)
+    test_derivatives_collector()
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))
