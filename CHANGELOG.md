@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-05 (later) — Diversity guard + monoculture regression tests
+
+Response to the 40/40 monoculture incident: the test suite now asserts
+population diversity as an emergent MULTI-CYCLE property, and the runner
+actively enforces it at runtime.
+
+- **Diversity guard** (`run_broad_evolution.py` + `diversity_state.json`):
+  every cycle records the winner's family, streak length, and distinct
+  winners over the last 20 cycles (printed as `DIVERSITY: ...`). A family
+  that wins >=2 consecutive cycles gets an escalating extra selection tax
+  (15 x streak) injected into the next cycle — repetition becomes
+  mathematically more expensive every cycle until something else wins.
+  WARNING printed at streak >=3.
+- **Six regression invariants** (suite section [19], now 96 checks):
+  multi-cycle winner variety on a shared strategy log; 900-repeat families
+  taxed below viability; streak tax prices out repeat winners; exam slots
+  span multiple logic families; graduated families get zero exam slots;
+  diversity-state streak math.
+- Post-change adversarial review: /explore robust to empty DB and hostile
+  query params; dedupe sets, funnel logging signature, and datetime imports
+  verified.
+
+**Lesson recorded:** the monoculture emerged from mechanism interactions
+(warm-start x elites x tournament selection) that each passed unit tests —
+population-level invariants over many cycles are now a permanent part of
+the quality gate.
+
+
 ## 2026-08-05 — Exploration overhaul: anti-monoculture engine + strategy lab UI
 
 Diagnosis on live data confirmed exploration collapse: the SAME family won

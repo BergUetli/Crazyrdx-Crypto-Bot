@@ -534,6 +534,7 @@ class EvolutionEngine:
         use_kill_archive: bool = True,
         seed_genomes: Optional[List[StrategyGenome]] = None,
         n_workers: Optional[int] = None,
+        extra_family_tax: Optional[Dict[str, float]] = None,
     ):
         self.features = features
         self.population_size = population_size
@@ -590,6 +591,9 @@ class EvolutionEngine:
         self._family_recent: Dict[str, int] = {}
         self._indicator_usage: Dict[str, int] = {}
         self._done_families: set = set()
+        # Escalating streak tax from the runner's diversity guard: a family
+        # that keeps winning cycle after cycle gets progressively priced out
+        self._extra_family_tax: Dict[str, float] = dict(extra_family_tax or {})
         try:
             from evolution.strategy_log import family_counts, indicator_usage
             self._family_recent = family_counts(EXPLORE_FAMILY_WINDOW_DAYS)
@@ -869,6 +873,7 @@ class EvolutionEngine:
         tax = EXPLORE_FAMILY_TAX * math.log1p(self._family_recent.get(fam, 0))
         if fam in self._done_families:
             tax += EXPLORE_GRADUATED_TAX
+        tax += self._extra_family_tax.get(fam, 0.0)
         return g.fitness - tax
 
     def select_parents(self) -> List[StrategyGenome]:

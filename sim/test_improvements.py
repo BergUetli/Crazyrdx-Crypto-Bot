@@ -859,6 +859,124 @@ def test_exploration(features):
             sl.LOG_DB, pf.GRADUATED_PATH = old_db, old_grad
 
 
+def test_diversity_invariants(features):
+    """The tests that would have caught the 40/40 monoculture: population
+    diversity is asserted as an emergent MULTI-CYCLE property, not just as
+    per-mechanism unit behavior."""
+    print("\n[19] diversity invariants: no more monoculture")
+    import tempfile as tf
+    import evolution.strategy_log as sl
+    import evolution.promotion_funnel as pf
+    import evolution.kill_archive as ka
+    from evolution.evaluator import EvolutionEngine
+    from evolution.genome import random_genome
+    from evolution.strategy_log import genome_family
+
+    with tf.TemporaryDirectory() as td:
+        old = (sl.LOG_DB, pf.GRADUATED_PATH, pf.CHAMPIONS_PATH, ka._ARCHIVE)
+        try:
+            sl.LOG_DB = Path(td) / "slog.db"
+            pf.GRADUATED_PATH = Path(td) / "grad.json"
+            pf.CHAMPIONS_PATH = Path(td) / "champs.json"
+            ka._ARCHIVE = ka.KillArchive(Path(td) / "kill.json")
+
+            # --- Invariant 1: successive cycles do NOT keep the same winner.
+            # 5 mini-cycles sharing one strategy log (as in production).
+            # Production baseline before the fix: 1 unique winner in 40.
+            winners = []
+            for c in range(5):
+                random.seed(100 + c)
+                eng = EvolutionEngine(
+                    features, population_size=18, elite_size=3,
+                    mutation_rate=0.35, immigrant_rate=0.25,
+                    use_kill_archive=False, n_workers=1)
+                eng.cycle_tag = c
+                best = eng.evolve_continuous(
+                    max_duration_s=25, no_improvement_limit=2, verbose=False)
+                winners.append(genome_family(best))
+            uniq = len(set(winners))
+            check(f"winner families vary across cycles ({uniq}/5 unique)",
+                  uniq >= 2, str(winners))
+
+            # --- Invariant 2: the tax on a heavily-tried family exceeds any
+            # plausible fitness edge before 1000 repeats.
+            eng = EvolutionEngine(features, population_size=6,
+                                  use_kill_archive=False, n_workers=1)
+            a = random_genome(); a.fitness = 60.0
+            fam_a = genome_family(a)
+            eng._family_recent = {fam_a: 900}
+            eng._done_families = set()
+            taxed = eng._sel_fitness(a)
+            check(f"900-repeat family taxed hard (60 -> {taxed:.0f})",
+                  taxed < 10.0)
+
+            # --- Invariant 3: streak escalation (diversity guard) applies.
+            eng2 = EvolutionEngine(features, population_size=6,
+                                   use_kill_archive=False, n_workers=1,
+                                   extra_family_tax={fam_a: 60.0})
+            eng2._family_recent = {}
+            check("streak tax prices out a repeat winner",
+                  eng2._sel_fitness(a) <= 0.0)
+
+            # --- Invariant 4: stratified funnel slots span logics.
+            class StubFunnel:
+                def __init__(self, feats): pass
+                def run(self, genome, n_trials_context=None, verbose=True):
+                    return {"all_passed": False, "failed_at": "stub",
+                            "genome_id": genome.genome_id}
+            pop = []
+            random.seed(7)
+            for logic, fit in (("OR", 90), ("OR", 80), ("OR", 70),
+                               ("MEANREV", 30), ("BREAKOUT", 20)):
+                g = random_genome(); g.entry_logic = logic
+                g.fitness = float(fit)
+                g.backtest_results = {"total_trades": 50}
+                pop.append(g)
+            old_funnel = pf.PromotionFunnel
+            pf.PromotionFunnel = StubFunnel
+            try:
+                res = pf.funnel_population_top(features[:200], pop, top_k=3,
+                                               min_trades=30, verbose=False)
+            finally:
+                pf.PromotionFunnel = old_funnel
+            ids = {r["genome_id"] for r in res}
+            logics = {g.entry_logic for g in pop if g.genome_id in ids}
+            check(f"exam slots span logics ({sorted(logics)})",
+                  len(logics) >= 2)
+
+            # --- Invariant 5: graduated families never re-enter the exam.
+            gx = pop[0]
+            pf.record_graduated(gx.to_dict())
+            pf.PromotionFunnel = StubFunnel
+            try:
+                res2 = pf.funnel_population_top(
+                    features[:200], [gx], top_k=3, min_trades=30, verbose=False)
+            finally:
+                pf.PromotionFunnel = old_funnel
+            check("graduated family gets zero exam slots", len(res2) == 0)
+
+            # --- Invariant 6: runner diversity-state math.
+            import run_broad_evolution as rbe
+            old_state = rbe.DIVERSITY_STATE
+            try:
+                rbe.DIVERSITY_STATE = Path(td) / "div.json"
+                g1, g2 = random_genome(), random_genome()
+                rbe.update_diversity_state(g1)
+                rbe.update_diversity_state(g1)
+                d = rbe.update_diversity_state(g1)
+                check("streak counted", d["streak"] == 3)
+                tax = rbe.load_streak_tax()
+                check("streak tax loaded and escalates (45)",
+                      tax.get(genome_family(g1)) == 45.0)
+                d2 = rbe.update_diversity_state(g2)
+                check("streak resets on new winner", d2["streak"] == 1
+                      and d2["distinct_last20"] == 2)
+            finally:
+                rbe.DIVERSITY_STATE = old_state
+        finally:
+            sl.LOG_DB, pf.GRADUATED_PATH, pf.CHAMPIONS_PATH, ka._ARCHIVE = old
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -879,6 +997,7 @@ def main():
     test_embargo_and_cross_asset(features)
     test_derivatives_collector()
     test_exploration(features)
+    test_diversity_invariants(features)
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))
