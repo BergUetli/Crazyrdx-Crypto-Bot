@@ -382,12 +382,13 @@ def learning_stats(runs: list[dict]) -> dict:
     }
 
 
-def gate_depth_chart(depths: list[int], w: int = 720, h: int = 220) -> str:
-    """Bar chart: exam gates cleared per finished search (8 = full pass)."""
+def gate_depth_chart(depths: list[int], w: int = 720, h: int = 250) -> str:
+    """Exam depth across retained clean-era searches. Never silently drops a day."""
     if not depths:
         return "<div class='muted'>No funnel data yet.</div>"
-    depths = depths[-60:]
-    ml, mr, mt, mb = 34, 10, 14, 30
+    # Keep the full retained clean era. 400 points is the on-disk cap, so an
+    # older green/red result remains visible until the underlying file is pruned.
+    ml, mr, mt, mb = 64, 16, 36, 48
     pw, ph = w - ml - mr, h - mt - mb
     n = len(depths)
     bw = max(4.0, pw / n - 3.0)
@@ -427,12 +428,14 @@ def gate_depth_chart(depths: list[int], w: int = 720, h: int = 220) -> str:
   <line x1="{ml}" y1="{pass_y}" x2="{w - mr}" y2="{pass_y}" stroke="#3ddc97" stroke-width="1" stroke-dasharray="4 4"/>
   <text x="{w - mr}" y="{pass_y + 14}" fill="#3ddc97" font-size="11" text-anchor="end">{N_GATES} = passed the whole exam</text>
   {''.join(bars)}
-  <text x="{ml}" y="{h - 8}" fill="#8b9bb4" font-size="11">older</text>
-  <text x="{w - mr}" y="{h - 8}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>
+  <text x="18" y="{mt + ph/2:.1f}" fill="#8b9bb4" font-size="11" text-anchor="middle" transform="rotate(-90 18 {mt + ph/2:.1f})">Y-axis: strict exam gates cleared</text>
+  <text x="{ml}" y="{h - 24}" fill="#8b9bb4" font-size="11">older retained searches</text>
+  <text x="{(ml+w-mr)/2:.0f}" y="{h - 8}" fill="#8b9bb4" font-size="11" text-anchor="middle">X-axis: finished search order (full retained history)</text>
+  <text x="{w - mr}" y="{h - 24}" fill="#8b9bb4" font-size="11" text-anchor="end">newer searches</text>
 </svg>"""
 
 
-def vintage_chart(cohorts: list[dict], w: int = 720, h: int = 220) -> str:
+def vintage_chart(cohorts: list[dict], w: int = 720, h: int = 250) -> str:
     """Weekly champion skill percentile vs same-day random strategies."""
     if not cohorts:
         return ""
@@ -475,7 +478,9 @@ def vintage_chart(cohorts: list[dict], w: int = 720, h: int = 220) -> str:
   <text x="{w - mr}" y="{y_of(50) - 6:.1f}" fill="#8b9bb4" font-size="11" text-anchor="end">50 = no better than random</text>
   <polyline points="{pts}" fill="none" stroke="#58a6ff" stroke-width="2"/>
   {dots}
+  <text x="18" y="{mt + ph/2:.1f}" fill="#8b9bb4" font-size="11" text-anchor="middle" transform="rotate(-90 18 {mt + ph/2:.1f})">Y-axis: champion percentile vs random controls</text>
   {labels}
+  <text x="{(ml+w-mr)/2:.0f}" y="{h - 8}" fill="#8b9bb4" font-size="11" text-anchor="middle">X-axis: control-cohort week</text>
 </svg>"""
 
 
@@ -662,6 +667,7 @@ def fitness_chart(vals: list[float], w: int = 720, h: int = 250) -> str:
     )
     return f"""
     <svg viewBox="0 0 {w} {h}" width="100%" height="{h}" style="background:#0f1419;border-radius:8px">
+      <text x="18" y="{mt + ph/2:.1f}" fill="#8b9bb4" font-size="11" text-anchor="middle" transform="rotate(-90 18 {mt + ph/2:.1f})">Y-axis: search ranking points (not dollars)</text>
       <text x="{ml}" y="32" fill="#e7eef7" font-size="14" font-weight="600">How good ideas look while searching</text>
       <text x="{w-mr}" y="32" fill="#8b9bb4" font-size="11" text-anchor="end">not money · not capital</text>
       {legend}
@@ -673,7 +679,7 @@ def fitness_chart(vals: list[float], w: int = 720, h: int = 250) -> str:
       <circle cx="{x1:.1f}" cy="{y1p:.1f}" r="3.5" fill="#38bdf8"/>
       <text x="{x1:.1f}" y="{y1p-8:.1f}" fill="#38bdf8" font-size="11" text-anchor="end">now {clipped[-1]:.0f}</text>
       <text x="{ml}" y="{h-18}" fill="#8b9bb4" font-size="11">older</text>
-      <text x="{(ml+w-mr)/2:.0f}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="middle">each point = one finished search</text>
+      <text x="{(ml+w-mr)/2:.0f}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="middle">X-axis: finished search order</text>
       <text x="{w-mr}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>
       <text x="{ml}" y="{h-4}" fill="#6b7c94" font-size="10">
         Blue = that search's best idea ranking. Purple = short average. Higher can mean better hunt, not “we made $X”.
@@ -832,6 +838,7 @@ def pnl_chart(vals: list[float], w: int = 720, h: int = 250) -> str:
     )
     return f"""
     <svg viewBox="0 0 {w} {h}" width="100%" height="{h}" style="background:#0f1419;border-radius:8px">
+      <text x="18" y="{mt + ph/2:.1f}" fill="#8b9bb4" font-size="11" text-anchor="middle" transform="rotate(-90 18 {mt + ph/2:.1f})">Y-axis: history P&amp;L ($, fake ${BOOK_USD:.0f} book)</text>
       <text x="{ml}" y="32" fill="#e7eef7" font-size="14" font-weight="600">Paper profit on old price history (fake ${BOOK_USD:.0f})</text>
       <text x="{w-mr}" y="32" fill="#8b9bb4" font-size="11" text-anchor="end">not the 30-day forward win</text>
       {legend}
@@ -844,7 +851,7 @@ def pnl_chart(vals: list[float], w: int = 720, h: int = 250) -> str:
         now ${clean[-1]:+.0f} → book ~${end_cap:.0f}
       </text>
       <text x="{ml}" y="{h-18}" fill="#8b9bb4" font-size="11">older</text>
-      <text x="{(ml+w-mr)/2:.0f}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="middle">each point = best idea of one search</text>
+      <text x="{(ml+w-mr)/2:.0f}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="middle">X-axis: finished search order</text>
       <text x="{w-mr}" y="{h-18}" fill="#8b9bb4" font-size="11" text-anchor="end">newer</text>
       <text x="{ml}" y="{h-4}" fill="#6b7c94" font-size="10">
         Starts from ${BOOK_USD:.0f}. Above green = history profitable (LAB). Big history $ is common and still not the real 30-day paper win.
@@ -940,7 +947,10 @@ def collect_status() -> dict:
     trend = compute_honest_trend(recent, prev if prev else recent[:1])
     recent_sum = summarize_window(recent)
     all_sum = summarize_window(runs[-100:] if runs else [])
-    learning = learning_stats([r for r in broad if is_funnel_era(r)][-80:])
+    # The intelligence charts deliberately retain the full current-engine era.
+    # Do not use the 30-search status window here, or yesterday's pass/fail dots
+    # disappear after a busy run.
+    learning = learning_stats([r for r in broad if is_funnel_era(r)])
     try:
         from evolution.vintage_ledger import ledger_summary
         vintage = ledger_summary()

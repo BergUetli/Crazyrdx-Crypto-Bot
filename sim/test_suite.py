@@ -310,7 +310,7 @@ def test_dashboard():
         with urllib.request.urlopen("http://127.0.0.1:8765/", timeout=3) as resp:
             html = resp.read().decode()
         check("dashboard serves", "Is the bot finding anything useful" in html or "Bot search status" in html or "Evolution status" in html)
-        check("has 40s map", "40-second map" in html or "Genome" in html)
+        check("has plain-English intro", "40-second map" in html or "In one minute" in html or "Genome" in html)
         check("asks if searching", "Is the bot searching right now" in html)
         check("asks what happened", "What just happened" in html)
         check("has shortlist section", "Shortlist" in html)
