@@ -1,6 +1,6 @@
 {
-  "updated_ts": 1785843811.367775,
-  "n": 4,
+  "updated_ts": 1786014951.2274659,
+  "n": 5,
   "champions": [
     {
       "genome_id": "mut_clone_clone_clone_clone_clone_clone_seed_seed_seed_seed_seed_cros_6843_9870_5742_1097_6774_1772_1778_2287",
@@ -209,7 +209,8 @@
           "passed": true
         }
       },
-      "ts": 1785718946.419759
+      "ts": 1785718946.419759,
+      "revalidated_ts": 1785844468.172381
     },
     {
       "genome_id": "mut_clone_clone_clone_seed_seed_seed_seed_seed_seed_1426_9855_4141_5418_9959",
@@ -376,7 +377,8 @@
           "passed": true
         }
       },
-      "ts": 1785708483.126011
+      "ts": 1785708483.126011,
+      "revalidated_ts": 1785844479.752165
     },
     {
       "genome_id": "mut_clone_mut_seed_seed_seed_seed_mut_clone_3424_2230_1374_4181",
@@ -575,7 +577,8 @@
           "passed": true
         }
       },
-      "ts": 1785765960.340265
+      "ts": 1785765960.340265,
+      "revalidated_ts": 1785844491.1713128
     },
     {
       "genome_id": "mut_cross_mut_cros_clone_cl_4423_6064",
@@ -751,7 +754,153 @@
           "passed": true
         }
       },
-      "ts": 1785765795.201378
+      "ts": 1785765795.201378,
+      "revalidated_ts": 1785844510.2373571
+    },
+    {
+      "genome_id": "gen_15_862952",
+      "score": 44.09958069595256,
+      "signature": [
+        "TFT",
+        [
+          [
+            "taker_flow_imbalance_4h",
+            ">=",
+            -0.0819
+          ],
+          [
+            "price_roc_3d",
+            "<=",
+            -117.7716
+          ]
+        ],
+        "volatility_scaled",
+        0.2847,
+        [
+          [
+            "profit_target",
+            0.04047
+          ],
+          [
+            "signal_reversal",
+            0.605522
+          ]
+        ]
+      ],
+      "family_key": [
+        "TFT",
+        [
+          "price_roc_3d",
+          "taker_flow_imbalance_4h"
+        ],
+        [
+          [
+            "price_roc_3d",
+            "<="
+          ],
+          [
+            "taker_flow_imbalance_4h",
+            ">="
+          ]
+        ],
+        [
+          "profit_target",
+          "signal_reversal"
+        ]
+      ],
+      "genome": {
+        "entry_conditions": [
+          {
+            "indicator": "taker_flow_imbalance_4h",
+            "operator": ">=",
+            "threshold": -0.08190605397951903
+          },
+          {
+            "indicator": "price_roc_3d",
+            "operator": "<=",
+            "threshold": -117.77163599695541
+          }
+        ],
+        "entry_logic": "TFT",
+        "filters": [
+          {
+            "filter_type": "time_of_day",
+            "params": {
+              "hours": [
+                17,
+                6,
+                18,
+                7
+              ]
+            }
+          },
+          {
+            "filter_type": "trend",
+            "params": {
+              "sma_period": 20,
+              "direction": "up"
+            }
+          }
+        ],
+        "sizing_method": "volatility_scaled",
+        "sizing_base": 0.2846876196253927,
+        "sizing_max": 0.45171575555623195,
+        "exit_rules": [
+          {
+            "exit_type": "profit_target",
+            "value": 0.040469841196531735
+          },
+          {
+            "exit_type": "signal_reversal",
+            "value": 0.6055216510137731
+          }
+        ],
+        "genome_id": "gen_15_862952",
+        "generation": 15,
+        "parent_ids": [],
+        "fitness": 18.268549588938253,
+        "backtest_results": {
+          "genome_id": "gen_15_862952",
+          "fitness": 18.268549588938253,
+          "total_trades": 32,
+          "win_rate": 0.625,
+          "total_pnl": 6.255470991432751,
+          "sharpe_ratio": 2.1695214761792307,
+          "max_drawdown": 0.035497308961968156,
+          "profit_factor": 1.9461159940854096,
+          "final_capital": 106.25547099143276
+        }
+      },
+      "gates_summary": {
+        "feasibility": {
+          "passed": true
+        },
+        "oos": {
+          "passed": true
+        },
+        "benchmark": {
+          "passed": true
+        },
+        "cross_asset": {
+          "passed": true
+        },
+        "walk_forward": {
+          "passed": true
+        },
+        "fee_stress": {
+          "passed": true
+        },
+        "perturbation": {
+          "passed": true
+        },
+        "mev": {
+          "passed": true
+        },
+        "dsr": {
+          "passed": true
+        }
+      },
+      "ts": 1785977427.015401
     }
   ],
   "dedupe": "structural_family_v1"
