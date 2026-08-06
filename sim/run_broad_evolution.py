@@ -61,6 +61,56 @@ def prune_dir(path: Path, pattern: str, keep: int) -> int:
     return removed
 
 
+DIVERSITY_STATE = SIM / "evolution" / "diversity_state.json"
+
+
+def load_streak_tax() -> dict:
+    """Escalating tax for a family that keeps winning cycles.
+
+    streak>=2 -> extra selection tax 15*streak on that family, growing each
+    repeated win. This is the hard guarantee against monoculture: repetition
+    gets mathematically more expensive every cycle until something else wins.
+    """
+    try:
+        st = json.loads(DIVERSITY_STATE.read_text())
+        fam, streak = st.get("streak_family"), int(st.get("streak", 0))
+        if fam and streak >= 2:
+            return {fam: 15.0 * streak}
+    except Exception:
+        pass
+    return {}
+
+
+def update_diversity_state(best) -> dict:
+    """Record the cycle winner's family; report streaks and recent variety."""
+    from evolution.strategy_log import genome_family
+    fam = genome_family(best)
+    winners = []
+    try:
+        winners = json.loads(DIVERSITY_STATE.read_text()).get("winners") or []
+    except Exception:
+        pass
+    winners = winners[-49:] + [fam]
+    streak = 0
+    for f in reversed(winners):
+        if f == fam:
+            streak += 1
+        else:
+            break
+    out = {
+        "winners": winners,
+        "streak": streak,
+        "streak_family": fam,
+        "distinct_last20": len(set(winners[-20:])),
+        "updated_ts": time.time(),
+    }
+    try:
+        DIVERSITY_STATE.write_text(json.dumps(out, indent=2))
+    except Exception:
+        pass
+    return out
+
+
 def load_seed_genomes(max_seeds: int = 5):
     """Warm-start seeds: past champions + last cycle's best genome."""
     from evolution.genome import StrategyGenome
@@ -186,8 +236,12 @@ def run_one_cycle(cycle: int, features: list) -> None:
             immigrant_rate=0.20,
             use_kill_archive=True,
             seed_genomes=seeds,
+            extra_family_tax=load_streak_tax(),
         )
         engine.cycle_tag = cycle
+        if engine._extra_family_tax:
+            fam, tx = next(iter(engine._extra_family_tax.items()))
+            print(f"  DIVERSITY GUARD: streak tax {tx:.0f} on repeat winner {fam[:60]}")
         best = engine.evolve_continuous(
             max_duration_s=2400,
             no_improvement_limit=15,
@@ -307,6 +361,15 @@ def run_one_cycle(cycle: int, features: list) -> None:
             f"promoted={n_promoted}/{len(funnel_results)} trials={total_trials} "
             f"kill_arch={get_archive().size} kill_hits={getattr(engine, 'kill_hits', 0)}"
         )
+        try:
+            div = update_diversity_state(best)
+            msg = (f"  DIVERSITY: winner_streak={div['streak']} "
+                   f"distinct_winners_last20={div['distinct_last20']}")
+            if div["streak"] >= 3:
+                msg += "  << WARNING: same family keeps winning; streak tax escalating"
+            print(msg)
+        except Exception as e:
+            print(f"  diversity state failed: {e}")
 
         # Disk retention: superseded records must not fill the disk over an
         # unattended month (~36 population + ~180 funnel files per day).
