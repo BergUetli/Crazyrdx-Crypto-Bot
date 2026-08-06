@@ -161,6 +161,7 @@ def calibrate_threshold_ranges(
 # Categorical options
 # RANDOM kept only as optional offline baseline control, never used in selection.
 LOGIC_OPS = ["AND", "OR", "MEANREV", "BREAKOUT", "TREND", "TFT"]
+MAX_CONDITIONS = 6  # complexity ceiling for entry rule depth
 BASELINE_LOGIC_OPS = ["RANDOM"]
 SIZING_METHODS = ["fixed", "kelly", "volatility_scaled", "equal_weight"]
 EXIT_TYPES = ["profit_target", "stop_loss", "time_stop", "trailing_stop", "signal_reversal"]
@@ -308,7 +309,10 @@ def random_genome(generation: int = 0) -> StrategyGenome:
     # Weighted pool: external features appear 4x for strong exploration
     weighted_indicators = list(INDICATORS) + EXTERNAL_BOOST + EXTERNAL_BOOST + EXTERNAL_BOOST
 
-    n_conditions = random.choices([1, 2, 3, 4], weights=[2, 4, 3, 1])[0]
+    # Up to MAX_CONDITIONS for deeper strategies; mass stays on 2-4
+    n_conditions = random.choices(
+        [1, 2, 3, 4, 5, 6], weights=[2, 4, 3, 2, 1, 0.5]
+    )[0]
     conditions = []
     for _ in range(n_conditions):
         indicator = random.choice(weighted_indicators)
@@ -431,7 +435,7 @@ def mutate(genome: StrategyGenome, mutation_rate: float = 0.1) -> StrategyGenome
     # Add/remove conditions
     if random.random() < mutation_rate * 0.5 and len(new_genome.entry_conditions) > 1:
         new_genome.entry_conditions.pop(random.randint(0, len(new_genome.entry_conditions) - 1))
-    if random.random() < mutation_rate * 0.5 and len(new_genome.entry_conditions) < 5:
+    if random.random() < mutation_rate * 0.5 and len(new_genome.entry_conditions) < MAX_CONDITIONS:
         indicator = random.choice(INDICATORS)
         min_val, max_val = get_threshold_range(indicator)
         new_genome.entry_conditions.append(

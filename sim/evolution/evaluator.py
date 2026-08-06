@@ -11,6 +11,7 @@ Selection rules:
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 import time
@@ -26,6 +27,10 @@ from success_criteria import (
     FEE_RATE_BASE,
     FITNESS_MAX as SC_FITNESS_MAX,
     FITNESS_MIN as SC_FITNESS_MIN,
+    EXPLORE_FAMILY_TAX,
+    EXPLORE_FAMILY_WINDOW_DAYS,
+    EXPLORE_FRONTIER_FRACTION,
+    EXPLORE_GRADUATED_TAX,
     FIXED_COST_PER_SIDE_USD,
     LAB_EMBARGO_BARS,
     LAB_MIN_TRADES_FULL,
@@ -581,6 +586,28 @@ class EvolutionEngine:
         self.population: List[StrategyGenome] = []
         self.generation = 0
         self.history: List[Dict[str, Any]] = []
+        self.cycle_tag = 0  # set by the runner for strategy-log attribution
+
+        # --- Exploration state (anti-monoculture) ---
+        # Recent per-family evaluation counts drive a selection-time fitness
+        # tax (diminishing returns); indicator usage drives frontier
+        # immigrants toward under-explored features; graduated/champion
+        # families get a flat extra tax (they're done).
+        self._family_recent: Dict[str, int] = {}
+        self._indicator_usage: Dict[str, int] = {}
+        self._done_families: set = set()
+        try:
+            from evolution.strategy_log import family_counts, indicator_usage
+            self._family_recent = family_counts(EXPLORE_FAMILY_WINDOW_DAYS)
+            self._indicator_usage = dict(indicator_usage(7.0))
+        except Exception:
+            pass
+        try:
+            from evolution.promotion_funnel import done_family_keys
+            self._done_families = done_family_keys()
+        except Exception:
+            pass
+        self._log_buffer: List[Dict[str, Any]] = []
         self._kill = None
         self.kill_hits = 0  # how many times we avoided a killed neighborhood
         if use_kill_archive:
@@ -591,14 +618,38 @@ class EvolutionEngine:
                 self._kill = None
 
     def _fresh_genome(self, generation: int = 0) -> StrategyGenome:
-        """Random genome, tabu-aware when kill archive is on."""
+        """Random genome, tabu-aware when kill archive is on.
+
+        A fraction of fresh genomes are 'frontier immigrants': one condition
+        is redirected to an under-explored indicator (inverse-frequency
+        sampling over recent usage), so coverage gaps get probed instead of
+        waiting for luck.
+        """
         from evolution.genome import random_genome
         if self._kill is not None:
             g = self._kill.random_genome_clean(generation=generation)
             if self._kill.is_killed(g):
                 self.kill_hits += 1
-            return g
-        return random_genome(generation=generation)
+        else:
+            g = random_genome(generation=generation)
+        if self._indicator_usage and random.random() < EXPLORE_FRONTIER_FRACTION:
+            g = self._frontierize(g)
+        return g
+
+    def _frontierize(self, genome: StrategyGenome) -> StrategyGenome:
+        """Point one entry condition at an under-explored indicator."""
+        from evolution.genome import INDICATORS, get_threshold_range
+        if not genome.entry_conditions:
+            return genome
+        # Inverse-frequency weights: never-tried indicators dominate
+        weights = [1.0 / (1 + self._indicator_usage.get(i, 0)) for i in INDICATORS]
+        pick = random.choices(INDICATORS, weights=weights)[0]
+        cond = random.choice(genome.entry_conditions)
+        cond.indicator = pick
+        lo, hi = get_threshold_range(pick)
+        cond.threshold = random.uniform(lo, hi)
+        genome.genome_id = f"frontier_{genome.genome_id[-18:]}"
+        return genome
 
     def _mutate_genome(self, genome: StrategyGenome, rate: float) -> StrategyGenome:
         from evolution.genome import mutate
@@ -799,6 +850,19 @@ class EvolutionEngine:
             self._apply_result(genome, result)
             if len(self._eval_cache) < 50_000:
                 self._eval_cache[dna_signature(genome)] = dict(result)
+            # Lab notebook: every fresh evaluation becomes a log row, and the
+            # in-memory family counter feeds the exploration tax immediately
+            try:
+                from evolution.strategy_log import genome_family, log_genome
+                self._log_buffer.append(log_genome(
+                    genome, result, self.cycle_tag, self.generation))
+                fam = genome_family(genome)
+                self._family_recent[fam] = self._family_recent.get(fam, 0) + 1
+                for c in (genome.entry_conditions or []):
+                    self._indicator_usage[c.indicator] = (
+                        self._indicator_usage.get(c.indicator, 0) + 1)
+            except Exception:
+                pass
             if done % 20 == 0 or done == len(pending):
                 write_activity(
                     {
@@ -813,6 +877,15 @@ class EvolutionEngine:
                 )
                 print(f"    {done}/{len(pending)} evaluated")
 
+        def _flush_log():
+            if self._log_buffer:
+                try:
+                    from evolution.strategy_log import log_rows
+                    log_rows(self._log_buffer)
+                except Exception:
+                    pass
+                self._log_buffer = []
+
         if pending and self.n_workers > 1:
             try:
                 pool = self._get_pool()
@@ -821,6 +894,7 @@ class EvolutionEngine:
                     zip(pending, pool.map(_eval_worker, dicts, chunksize=4)), 1
                 ):
                     _finish(genome, result, done)
+                _flush_log()
                 return
             except Exception as e:
                 print(f"  Parallel evaluation failed ({e}); falling back to serial")
@@ -829,17 +903,36 @@ class EvolutionEngine:
         for done, genome in enumerate(pending, 1):
             if genome.backtest_results is None:
                 _finish(genome, self.evaluator.evaluate(genome), done)
+        _flush_log()
+
+    def _sel_fitness(self, g: StrategyGenome) -> float:
+        """Selection-time fitness: raw fitness minus the exploration tax.
+
+        Families tried many times recently earn less breeding priority
+        (diminishing returns); champion/graduated families earn a flat extra
+        tax — they're done, re-breeding them adds nothing. Reported fitness
+        stays raw everywhere; only SELECTION feels this.
+        """
+        try:
+            from evolution.strategy_log import genome_family
+            fam = genome_family(g)
+        except Exception:
+            return g.fitness
+        tax = EXPLORE_FAMILY_TAX * math.log1p(self._family_recent.get(fam, 0))
+        if fam in self._done_families:
+            tax += EXPLORE_GRADUATED_TAX
+        return g.fitness - tax
 
     def select_parents(self) -> List[StrategyGenome]:
-        """Tournament selection with elite carry-over."""
-        sorted_pop = sorted(self.population, key=lambda g: g.fitness, reverse=True)
+        """Tournament selection with elite carry-over (exploration-taxed)."""
+        sorted_pop = sorted(self.population, key=self._sel_fitness, reverse=True)
         parents = sorted_pop[: self.elite_size]
         n_tournament = self.population_size - self.elite_size
         for _ in range(n_tournament):
             tournament = random.sample(
                 self.population, min(5, len(self.population))
             )
-            winner = max(tournament, key=lambda g: g.fitness)
+            winner = max(tournament, key=self._sel_fitness)
             parents.append(winner)
         return parents
 
@@ -913,8 +1006,10 @@ class EvolutionEngine:
             parents = self.select_parents()
 
             next_gen: List[StrategyGenome] = []
+            # Elite carry-over is exploration-taxed too: a novel decent family
+            # can displace the 900th clone of the reigning one
             sorted_pop = sorted(
-                self.population, key=lambda g: g.fitness, reverse=True
+                self.population, key=self._sel_fitness, reverse=True
             )
             next_gen.extend(sorted_pop[: self.elite_size])
 

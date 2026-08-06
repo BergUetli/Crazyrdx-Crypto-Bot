@@ -1320,6 +1320,106 @@ def champions_html(s: dict) -> str:
   </div>"""
 
 
+def explore_page(logic: str = "", family: str = "") -> str:
+    """Exploration lab view: what has been tried, per family, drill-down to
+    the raw strategy log. 'MEANREV: 200 sub-strategies, 62% viable — click
+    for the log.'"""
+    try:
+        from evolution.strategy_log import (
+            summary_by_logic, family_table, recent_log, indicator_usage,
+        )
+        from evolution.genome import INDICATORS
+    except Exception as e:
+        return f"<html><body style='background:#0b0f14;color:#e7eef7'>strategy log unavailable: {e}</body></html>"
+
+    def fmt_ts(ts):
+        try:
+            return datetime.fromtimestamp(ts).strftime("%m-%d %H:%M")
+        except Exception:
+            return "?"
+
+    css = """
+  :root { --bg:#0b0f14; --card:#151b23; --text:#e7eef7; --muted:#8b9bb4; --ok:#3ddc97; --bad:#e85d5d; --warn:#f5a623; --line:#243041; }
+  * { box-sizing:border-box; } body { margin:0; font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--text); padding:20px; max-width:1080px; margin-left:auto; margin-right:auto; }
+  h1{margin:0;font-size:22px} h2{margin:0 0 10px;font-size:15px;font-weight:700}
+  .sub{color:var(--muted);font-size:13px;margin:6px 0 16px} a{color:var(--ok);text-decoration:none}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px} @media(max-width:900px){.cards{grid-template-columns:1fr}}
+  .fam{background:#0f1419;border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:block;color:var(--text)}
+  .fam:hover{border-color:var(--ok)} .big{font-size:22px;font-weight:700} .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .bar{height:7px;border-radius:4px;background:#243041;margin-top:8px;overflow:hidden} .bar>i{display:block;height:100%;background:var(--ok)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px} th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600} code{font-size:11.5px;color:#c9d7ea} .muted{color:var(--muted)}
+  .pos{color:var(--ok)} .neg{color:var(--bad)}
+"""
+    body = [f"<h1>Exploration lab</h1><div class='sub'><a href='/'>&larr; main dashboard</a> · every strategy the engine tries is logged here · auto-refresh 30s</div>"]
+
+    summ = summary_by_logic(7.0)
+    if not summ:
+        body.append("<div class='card'><p>No strategies logged yet — the log fills within one cycle of the new engine running.</p></div>")
+    else:
+        cards = []
+        for r in summ:
+            viable_pct = 100.0 * r["viable"] / max(r["tried"], 1)
+            pos_pct = 100.0 * r["positive"] / max(r["tried"], 1)
+            cards.append(f"""
+      <a class='fam' href='/explore?logic={r["logic"]}'>
+        <div class='k'>{r["logic"]}</div>
+        <div class='big'>{r["tried"]:,} tried</div>
+        <div class='muted'>{r["families"]} distinct families · best fitness {r["best_fitness"]:.0f}</div>
+        <div class='muted'>{viable_pct:.0f}% viable (&ge;30 trades) · {pos_pct:.0f}% scored &gt; 0</div>
+        <div class='muted'>exam: {r["funnel_pass"]} passed / {r["funnel_fail"]} failed</div>
+        <div class='bar'><i style='width:{min(pos_pct,100):.0f}%'></i></div>
+      </a>""")
+        body.append(f"<div class='card'><h2>Strategy families — last 7 days</h2><div class='cards'>{''.join(cards)}</div></div>")
+
+        usage = indicator_usage(7.0)
+        never = [i for i in INDICATORS if usage.get(i, 0) == 0]
+        top = usage.most_common(8)
+        bottom = sorted(((i, usage.get(i, 0)) for i in INDICATORS), key=lambda x: x[1])[:8]
+        body.append(
+            "<div class='card'><h2>Factor coverage</h2>"
+            f"<p class='muted'>Top-used: {', '.join(f'{i} ({n:,})' for i, n in top)}</p>"
+            f"<p class='muted'>Least-used: {', '.join(f'{i} ({n})' for i, n in bottom)}</p>"
+            + (f"<p class='neg'>Never tried in window ({len(never)}): {', '.join(never[:15])}</p>" if never else "<p class='pos'>Every indicator explored in the last 7 days.</p>")
+            + "<p class='muted'>Frontier immigrants automatically bias new random strategies toward the least-used factors.</p></div>"
+        )
+
+    if logic:
+        fams = family_table(logic, 7.0)
+        rows = "".join(
+            f"<tr><td><a href='/explore?logic={logic}&family={f['family'].replace('|','%7C').replace(',','%2C')}'><code>{f['family'][:70]}</code></a></td>"
+            f"<td>{f['tried']}</td><td>{f['best_fitness']:.0f}</td>"
+            f"<td>{f['avg_trades']:.0f}</td><td>{100.0*f['positive']/max(f['tried'],1):.0f}%</td>"
+            f"<td class='muted'>{fmt_ts(f['last_ts'])}</td></tr>"
+            for f in fams
+        )
+        body.append(
+            f"<div class='card'><h2>{logic}: sub-families (7d)</h2>"
+            f"<table><tr><th>family (click for raw log)</th><th>tried</th><th>best fit</th><th>avg trades</th><th>&gt;0 fit</th><th>last seen</th></tr>{rows}</table></div>"
+        )
+
+    if logic or family:
+        log = recent_log(logic=logic or None, family=family or None, limit=120)
+        rows = "".join(
+            f"<tr><td class='muted'>{fmt_ts(r['ts'])}</td><td>{r['cycle']}/{r['generation']}</td>"
+            f"<td>{r['logic']}</td><td><code>{', '.join(r['indicators'])[:60]}</code></td>"
+            f"<td class='{'pos' if (r['fitness'] or 0) > 0 else 'neg'}'>{(r['fitness'] or 0):.0f}</td>"
+            f"<td>{r['trades']}</td><td>{(r['pnl'] or 0):+.2f}</td>"
+            f"<td>{r['verdict'] or r['source']}</td></tr>"
+            for r in log
+        )
+        body.append(
+            f"<div class='card'><h2>Raw strategy log {'· ' + family[:50] if family else '· ' + logic}</h2>"
+            f"<table><tr><th>when</th><th>cyc/gen</th><th>logic</th><th>conditions on</th><th>fitness</th><th>trades</th><th>pnl</th><th>verdict</th></tr>{rows}</table></div>"
+        )
+
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta http-equiv="refresh" content="30"/><title>Exploration lab</title>
+<style>{css}</style></head><body>{''.join(body)}</body></html>"""
+
+
 def html_page(s: dict) -> str:
     recent = s.get("recent") or []
     fit_vals = [sanitize_fitness(r.get("best_fitness") or 0) for r in recent]
@@ -1405,7 +1505,7 @@ def html_page(s: dict) -> str:
 </head>
 <body>
   <h1>Is the bot finding anything useful?</h1>
-  <div class="sub">Refreshes every 10s · {s['now']} · <a href="/api">tech details</a></div>
+  <div class="sub">Refreshes every 10s · {s['now']} · <a href="/explore"><b>exploration lab</b></a> · <a href="/api">tech details</a></div>
 
   <div class="card">
     <h2>In one minute</h2>
@@ -1535,6 +1635,20 @@ class Handler(BaseHTTPRequestHandler):
         return
 
     def do_GET(self):
+        if self.path.startswith("/explore"):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            page = explore_page(
+                logic=(q.get("logic") or [""])[0],
+                family=(q.get("family") or [""])[0],
+            )
+            body = page.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path.startswith("/api"):
             s = collect_status()
             # compact API

@@ -187,6 +187,7 @@ def run_one_cycle(cycle: int, features: list) -> None:
             use_kill_archive=True,
             seed_genomes=seeds,
         )
+        engine.cycle_tag = cycle
         best = engine.evolve_continuous(
             max_duration_s=2400,
             no_improvement_limit=15,
@@ -313,6 +314,12 @@ def run_one_cycle(cycle: int, features: list) -> None:
         n_fun = prune_dir(SIM / "evolution" / "funnel_results", "funnel_*.json", keep=1000)
         if n_pop or n_fun:
             print(f"  Pruned {n_pop} population + {n_fun} funnel files")
+        if cycle % 24 == 0:  # strategy-log retention, ~once a day
+            try:
+                from evolution.strategy_log import prune
+                prune(keep_days=45)
+            except Exception:
+                pass
     finally:
         # evolve_continuous shuts its pool down on clean exit; this covers
         # exception paths so worker processes never leak across cycles.

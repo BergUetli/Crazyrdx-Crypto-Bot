@@ -63,8 +63,54 @@ EVO_DIR = SIM_DIR / "evolution"
 TRIALS_PATH = EVO_DIR / "trials_log.jsonl"
 TRIAL_COUNT_PATH = EVO_DIR / "trial_count.json"
 CHAMPIONS_PATH = EVO_DIR / "champions.json"
+GRADUATED_PATH = EVO_DIR / "graduated_families.json"
 FUNNEL_DIR = EVO_DIR / "funnel_results"
 FUNNEL_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _family_str(g: Dict[str, Any]) -> str:
+    """String family key matching strategy_log.family_key format."""
+    inds = sorted({
+        str(c.get("indicator") or "?") for c in (g.get("entry_conditions") or [])
+    })
+    return f"{g.get('entry_logic') or '?'}|{','.join(inds)}"
+
+
+def record_graduated(genome_dict: Dict[str, Any]) -> None:
+    """Remember families that PASSED the funnel — pass-once semantics.
+
+    Without this, passers that don't make the capped champion board are
+    neither champions nor killed and re-enter the exam forever (observed:
+    one family funneled 43x). Graduated families are skipped by candidate
+    selection and taxed in breeding selection.
+    """
+    fam = _family_str(genome_dict)
+    fams = set()
+    if GRADUATED_PATH.exists():
+        try:
+            fams = set(json.loads(GRADUATED_PATH.read_text()).get("families", []))
+        except Exception:
+            fams = set()
+    if fam not in fams:
+        fams.add(fam)
+        GRADUATED_PATH.write_text(json.dumps(
+            {"updated_ts": time.time(), "n": len(fams),
+             "families": sorted(fams)}, indent=2))
+
+
+def done_family_keys() -> set:
+    """Champion-board + graduated family strings (breeding-tax input)."""
+    fams = set()
+    try:
+        for c in json.loads(CHAMPIONS_PATH.read_text()).get("champions", []):
+            fams.add(_family_str(c.get("genome") or {}))
+    except Exception:
+        pass
+    try:
+        fams |= set(json.loads(GRADUATED_PATH.read_text()).get("families", []))
+    except Exception:
+        pass
+    return fams
 
 
 def _result_dict(res) -> Dict[str, Any]:
@@ -489,6 +535,10 @@ class PromotionFunnel:
             print(f"  VERDICT: PROMOTE_TO_PAPER score={out['score']:.2f} dsr={dsr:.2f}")
         self._save(out)
         self._maybe_archive_champion(out)
+        try:
+            record_graduated(out.get("genome") or {})
+        except Exception:
+            pass
         return out
 
     # Conditions on these raw-scale indicators don't transfer across assets
@@ -888,34 +938,73 @@ def funnel_population_top(
             champion_families.add(_family_key_from_genome_dict(c.get("genome") or {}))
     except Exception:
         pass
+    graduated = set()
+    try:
+        graduated = set(
+            json.loads(GRADUATED_PATH.read_text()).get("families", [])
+        )
+    except Exception:
+        pass
     picked: List[StrategyGenome] = []
     skipped_tabu = 0
     skipped_champion = 0
-    for g in cands:
+
+    def _eligible(g: StrategyGenome) -> bool:
+        nonlocal skipped_tabu, skipped_champion
         sig = _genome_signature(g)
         if sig in seen_exact:
-            continue
+            return False
         fam = _family_key_from_genome_dict(g.to_dict())
-        if fam in champion_families:
+        if fam in champion_families or _family_str(g.to_dict()) in graduated:
             skipped_champion += 1
-            continue
+            return False
         if fam in seen_family:
-            continue
+            return False
         if arch is not None and arch.is_killed(g):
             skipped_tabu += 1
-            continue
+            return False
         seen_exact.add(sig)
         seen_family.add(fam)
-        picked.append(g)
+        return True
+
+    # Stratified pass first: the best eligible candidate of EACH logic family
+    # gets an exam slot. Without this, one dominant logic (observed: OR at
+    # 82% of candidates, MEANREV/BREAKOUT/TREND at zero) monopolizes all
+    # exam feedback and the kill archive learns nothing about other classes.
+    by_logic: Dict[str, List[StrategyGenome]] = {}
+    for g in cands:
+        by_logic.setdefault(g.entry_logic, []).append(g)
+    for logic in sorted(by_logic, key=lambda l: -by_logic[l][0].fitness):
         if len(picked) >= top_k:
             break
+        for g in by_logic[logic]:
+            if _eligible(g):
+                picked.append(g)
+                break
+
+    # Fill remaining slots by raw fitness
+    for g in cands:
+        if len(picked) >= top_k:
+            break
+        if _eligible(g):
+            picked.append(g)
 
     funnel = PromotionFunnel(features)
     results = []
     for g in picked:
-        results.append(
-            funnel.run(g, n_trials_context=n_trials_context, verbose=verbose)
-        )
+        r = funnel.run(g, n_trials_context=n_trials_context, verbose=verbose)
+        results.append(r)
+        # Funnel verdicts also land in the strategy lab-notebook
+        try:
+            from evolution.strategy_log import log_genome, log_rows
+            log_rows([log_genome(
+                g, g.backtest_results or {}, cycle=0,
+                generation=-1, source="funnel",
+                verdict=("PASS" if r.get("all_passed")
+                         else str(r.get("failed_at"))),
+            )])
+        except Exception:
+            pass
     if verbose:
         n_pass = sum(1 for r in results if r.get("all_passed"))
         arch_n = arch.size if arch is not None else 0
