@@ -307,9 +307,11 @@ def test_limit_query():
 # ---------------------------------------------------------------------------
 
 def _redirect_state_to_tmp(tmp: Path):
-    """Point kill archive / champions / trials / funnel output at tmp dir."""
+    """Point kill archive / champions / trials / funnel / strategy log at tmp."""
     import evolution.kill_archive as ka
     import evolution.promotion_funnel as pf
+    import evolution.strategy_log as sl
+    sl.LOG_DB = tmp / "slog_e2e.db"
     ka.KILL_PATH = tmp / "killed_dna.json"
     ka._ARCHIVE = ka.KillArchive(ka.KILL_PATH)
     pf.TRIALS_PATH = tmp / "trials_log.jsonl"
@@ -354,10 +356,15 @@ def test_e2e(features, n_workers):
     if n_workers > 1:
         check(f"eval cache used (hits={engine.cache_hits})",
               engine.cache_hits >= 0)  # informational; asserted not to crash
-    check("warm-start seeds injected",
-          any(g.genome_id.startswith(("seed_", "mut_seed_")) or
-              any(p.startswith("seed_") for p in g.parent_ids)
-              for g in engine.population) or engine.generation > 3)
+    # Warm-start guarantee lives at generation 0 (later generations may
+    # legitimately breed seeds away — the exploration tax encourages it)
+    eng0 = EvolutionEngine(
+        features, population_size=24, elite_size=4,
+        use_kill_archive=True, seed_genomes=seeds, n_workers=1)
+    eng0.initialize_population()
+    check("warm-start seeds injected at gen-0",
+          any(g.genome_id.startswith(("seed_", "focus_", "nbhd_"))
+              for g in eng0.population))
     return best, engine
 
 
