@@ -951,6 +951,23 @@ def collect_status() -> dict:
     # Do not use the 30-search status window here, or yesterday's pass/fail dots
     # disappear after a busy run.
     learning = learning_stats([r for r in broad if is_funnel_era(r)])
+    # Verdict-strip inputs: data freshness, winner diversity, 24h exploration
+    try:
+        from layer1.historical_feature_engine_1h import get_historical_features_1h
+        _latest = get_historical_features_1h("SOL/USDC", limit=1)
+        data_age_h = ((datetime.now().timestamp() - _latest[-1]["ts"] / 1000.0)
+                      / 3600.0) if _latest else None
+    except Exception:
+        data_age_h = None
+    diversity = load_json(EVO / "diversity_state.json") or {}
+    try:
+        from evolution.strategy_log import summary_by_logic
+        _ex = summary_by_logic(1.0)
+        explore_24h = {"tried": sum(r["tried"] for r in _ex),
+                       "families": sum(r["families"] for r in _ex),
+                       "logics": len(_ex)}
+    except Exception:
+        explore_24h = {}
     try:
         from evolution.vintage_ledger import ledger_summary
         vintage = ledger_summary()
@@ -999,6 +1016,9 @@ def collect_status() -> dict:
         "trend": trend,
         "learning": learning,
         "vintage": vintage,
+        "data_age_h": data_age_h,
+        "diversity": diversity,
+        "explore_24h": explore_24h,
         "trials_total": int(trials.get("total_trials") or 0),
         "champions": champions,
         "last_promoted": last_promoted,
@@ -1420,6 +1440,91 @@ def explore_page(logic: str = "", family: str = "") -> str:
 <style>{css}</style></head><body>{''.join(body)}</body></html>"""
 
 
+def verdict_strip(s: dict) -> str:
+    """The three questions the owner actually has, answered in big type.
+
+    Craft-canon rationale: closes the gulf of evaluation — status is visible
+    without reading prose; each card links to its evidence.
+    """
+    proc = s.get("process") or {}
+    a = s.get("activity") or {}
+    data_age = s.get("data_age_h")
+    running = bool(proc.get("running"))
+    hb_fresh = bool(a and a.get("live"))
+    if running and hb_fresh and (data_age is None or data_age < 6):
+        r = ("YES", "ok", "Searching right now, on fresh market data.")
+    elif running:
+        why = ("market data is stale — check the downloader"
+               if (data_age or 0) >= 6 else "heartbeat is stale")
+        r = ("PARTLY", "warn", f"Process is up but {why}.")
+    else:
+        r = ("NO", "bad", "The search process is not running.")
+
+    v = s.get("vintage") or {}
+    ls = s.get("learning") or {}
+    if v.get("ok"):
+        lb = v.get("verdict") or "?"
+        lt = v.get("verdict_text") or ""
+    elif ls.get("ok"):
+        lb = "TOO EARLY"
+        lt = (ls.get("head") or "") + " Forward proof accumulates below."
+    else:
+        lb = "TOO EARLY"
+        lt = "The honest measurement needs a few days of fresh candles first."
+    lc = {"SMARTER": "ok", "WEAKER": "bad", "NO EDGE YET": "bad",
+          "FLAT": "warn"}.get(lb, "warn")
+
+    d = s.get("diversity") or {}
+    ex = s.get("explore_24h") or {}
+    distinct = d.get("distinct_last20")
+    streak = int(d.get("streak") or 0)
+    tried = int(ex.get("tried") or 0)
+    if distinct is None:
+        e = ("WARMING UP", "warn",
+             "Diversity tracking starts after the next finished search.")
+    elif distinct >= 6 and streak < 3:
+        e = ("HEALTHY", "ok",
+             f"{distinct} different winning families in the last 20 searches; "
+             f"~{tried:,} strategies tried in 24h.")
+    elif distinct >= 3 and streak < 5:
+        e = ("NARROWING", "warn",
+             f"Only {distinct} distinct winners lately (streak {streak}) — "
+             f"the exploration tax is pushing back.")
+    else:
+        e = ("STUCK", "bad",
+             f"Winner variety collapsed (distinct {distinct}, streak {streak}) "
+             f"— escalating guard active; see the lab.")
+
+    def card(title, badge, cls, txt, href):
+        return (f"<a class='hero' href='{href}'><div class='k'>{title}</div>"
+                f"<div class='verdict {cls}'>{badge}</div><p>{txt}</p></a>")
+
+    return ("<div class='heroes'>"
+            + card("Is it running?", r[0], r[1], r[2], "#now")
+            + card("Is it getting smarter?", lb, lc, lt, "#learning")
+            + card("Is it exploring new ideas?", e[0], e[1], e[2], "/explore")
+            + "</div>")
+
+
+def explore_summary_card(s: dict) -> str:
+    ex = s.get("explore_24h") or {}
+    d = s.get("diversity") or {}
+    if not ex.get("tried"):
+        return ""
+    return f"""
+  <div class="card">
+    <div class="row between"><h2>What it tried in the last 24 hours</h2>
+      <a href="/explore"><b>open the exploration lab &rarr;</b></a></div>
+    <div class="grid4" style="margin-top:10px">
+      <div class="stat"><div class="k">Strategies tested</div><div class="v">{ex.get('tried', 0):,}</div></div>
+      <div class="stat"><div class="k">Distinct families</div><div class="v">{ex.get('families', 0):,}</div></div>
+      <div class="stat"><div class="k">Strategy classes active</div><div class="v">{ex.get('logics', 0)}</div></div>
+      <div class="stat"><div class="k">Winner variety (last 20)</div><div class="v">{d.get('distinct_last20', '&ndash;')}</div></div>
+    </div>
+    <div class="hint" style="margin-top:8px">The lab lists every family with counts and success rates, and the raw log of each attempt.</div>
+  </div>"""
+
+
 def html_page(s: dict) -> str:
     recent = s.get("recent") or []
     fit_vals = [sanitize_fitness(r.get("best_fitness") or 0) for r in recent]
@@ -1500,6 +1605,15 @@ def html_page(s: dict) -> str:
   .note {{ margin-top:10px; padding:10px 12px; border-radius:8px; background:#0f1419; border:1px solid var(--line); font-size:13px; line-height:1.45; color:#c9d7ea; }}
   .note b {{ color:var(--text); }}
   .warnbox {{ margin-top:12px; padding:12px 14px; border-radius:8px; border:1px solid #f5a62355; background:rgba(245,166,35,0.08); font-size:14px; line-height:1.5; }}
+  .heroes {{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }}
+  @media (max-width:800px) {{ .heroes {{ grid-template-columns:1fr; }} }}
+  .hero {{ display:block; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; color:var(--text); text-decoration:none; }}
+  .hero:hover {{ border-color:var(--ok); }}
+  .hero p {{ margin:6px 0 0; color:var(--muted); font-size:12.5px; line-height:1.4; }}
+  .verdict {{ font-size:26px; font-weight:800; margin-top:4px; letter-spacing:.02em; }}
+  .verdict.ok {{ color:var(--ok); }} .verdict.bad {{ color:var(--bad); }} .verdict.warn {{ color:var(--warn); }}
+  details.card > summary {{ cursor:pointer; font-size:15px; font-weight:700; color:var(--muted); list-style-position:outside; }}
+  details.card[open] > summary {{ margin-bottom:10px; color:var(--text); }}
   .okbox {{ margin-top:12px; padding:12px 14px; border-radius:8px; border:1px solid #3ddc9755; background:rgba(61,220,151,0.07); font-size:14px; line-height:1.5; }}
 </style>
 </head>
@@ -1507,17 +1621,9 @@ def html_page(s: dict) -> str:
   <h1>Is the bot finding anything useful?</h1>
   <div class="sub">Refreshes every 10s · {s['now']} · <a href="/explore"><b>exploration lab</b></a> · <a href="/api">tech details</a></div>
 
-  <div class="card">
-    <h2>In one minute</h2>
-    <div class="mapbox">
-      The bot invents <b>strategy ideas</b>, tries them on <b>old prices with fake ${BOOK_USD:.0f}</b>,
-      and only keeps ideas that pass a <b>strict exam</b>.<br/><br/>
-      <b>Nothing here is live money.</b> A high line on a chart is not “we earned $X”.<br/><br/>
-      Real success later means: run an idea forward for <b>{PAPER_MIN_DAYS} days</b> on paper and
-      end with about <b>${paper_end_min:.0f}+</b> (started from ${BOOK_USD:.0f}), with enough trades and no big crash.
-    </div>
-  </div>
+  {verdict_strip(s)}
 
+  <a id="now"></a>
   {activity_html(s)}
 
   {last_cycle_html(s)}
@@ -1579,12 +1685,27 @@ def html_page(s: dict) -> str:
     </div>
   </div>
 
+  <div id="learning">
   {learning_html(s)}
+  </div>
+
+  {explore_summary_card(s)}
 
   {champions_html(s)}
 
-  <div class="card">
-    <h2>What counts as a win?</h2>
+  <details class="card">
+    <summary>In one minute — how this machine works</summary>
+    <div class="mapbox">
+      The bot invents <b>strategy ideas</b>, tries them on <b>old prices with fake ${BOOK_USD:.0f}</b>,
+      and only keeps ideas that pass a <b>strict exam</b>.<br/><br/>
+      <b>Nothing here is live money.</b> A high line on a chart is not “we earned $X”.<br/><br/>
+      Real success later means: run an idea forward for <b>{PAPER_MIN_DAYS} days</b> on paper and
+      end with about <b>${paper_end_min:.0f}+</b> (started from ${BOOK_USD:.0f}), with enough trades and no big crash.
+    </div>
+  </details>
+
+  <details class="card">
+    <summary>What counts as a win? (the promotion bars)</summary>
     <div class="okbox">
       <b>The only “first real success”</b> is a <b>{PAPER_MIN_DAYS}-day forward paper run</b>
       (after an idea is already on the shortlist): start ${BOOK_USD:.0f}, finish about
@@ -1613,10 +1734,10 @@ def html_page(s: dict) -> str:
       <b>Not a win:</b> a high ranking number, a big history profit on Chart 1, a high win-rate with tiny dollars,
       fewer than {MIN_TRADES} trades, one lucky exam pass with no forward paper, or six copies of the same idea.
     </div>
-  </div>
+  </details>
 
-  <div class="card">
-    <h2>Words you’ll see</h2>
+  <details class="card">
+    <summary>Words you’ll see (glossary)</summary>
     <table>
       <tr><td><b>Searching</b></td><td class="muted">The Mac Mini is inventing and grading ideas.</td></tr>
       <tr><td><b>Pretend / paper trades</b></td><td class="muted">Fake buy/sell on old prices. No real SOL moves.</td></tr>
@@ -1625,7 +1746,8 @@ def html_page(s: dict) -> str:
       <tr><td><b>Shortlist</b></td><td class="muted">Ideas that passed the lab exam. Candidates only.</td></tr>
       <tr><td><b>Blocked families</b></td><td class="muted">Known bad idea neighborhoods the bot tries not to retest forever.</td></tr>
     </table>
-  </div>
+  </details>
+
 </body>
 </html>"""
 
