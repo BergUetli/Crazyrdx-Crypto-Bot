@@ -775,6 +775,90 @@ def test_derivatives_collector():
             dc.DB_DERIVS = old
 
 
+def test_exploration(features):
+    print("\n[18] exploration: strategy log, family tax, frontier, graduated")
+    import tempfile as tf
+    import evolution.strategy_log as sl
+    import evolution.promotion_funnel as pf
+    from evolution.evaluator import EvolutionEngine
+    from evolution.genome import random_genome
+    random.seed(81)
+
+    with tf.TemporaryDirectory() as td:
+        old_db, old_grad = sl.LOG_DB, pf.GRADUATED_PATH
+        try:
+            sl.LOG_DB = Path(td) / "slog.db"
+            pf.GRADUATED_PATH = Path(td) / "grad.json"
+
+            # log + aggregates
+            g = random_genome(); g.entry_logic = "MEANREV"
+            n = sl.log_rows([sl.log_genome(g, {"fitness": 12.0, "total_trades": 40,
+                                               "total_pnl": 1.5}, 1, 0)])
+            sl.log_rows([sl.log_genome(g, {"fitness": -5.0, "total_trades": 10,
+                                           "total_pnl": -0.5}, 1, 1)])
+            check("rows logged", n == 1)
+            summ = sl.summary_by_logic(1.0)
+            m = next(r for r in summ if r["logic"] == "MEANREV")
+            check("aggregates correct", m["tried"] == 2 and m["viable"] == 1
+                  and m["positive"] == 1, str(m))
+            fc = sl.family_counts(1.0)
+            check("family counts", fc.get(sl.genome_family(g)) == 2)
+            check("indicator usage tracked",
+                  sum(sl.indicator_usage(1.0).values()) > 0)
+            check("family table + recent log work",
+                  len(sl.family_table("MEANREV")) == 1
+                  and len(sl.recent_log(logic="MEANREV")) == 2)
+
+            # graduated registry: pass-once semantics
+            pf.record_graduated(g.to_dict())
+            pf.record_graduated(g.to_dict())
+            fams = json.loads(pf.GRADUATED_PATH.read_text())["families"]
+            check("graduated recorded once", len(fams) == 1)
+            check("done_family_keys includes graduated",
+                  pf._family_str(g.to_dict()) in pf.done_family_keys())
+
+            # exploration tax shifts SELECTION but not reported fitness
+            eng = EvolutionEngine(features, population_size=10, n_workers=1)
+            a, b = random_genome(), random_genome()
+            a.fitness = 50.0
+            b.fitness = 45.0
+            eng._family_recent = {sl.genome_family(a): 500}  # a over-explored
+            eng._done_families = set()
+            check("tax reorders selection (novel 45 beats stale 50)",
+                  eng._sel_fitness(b) > eng._sel_fitness(a)
+                  and a.fitness == 50.0)
+            eng._done_families = {sl.genome_family(b)}
+            check("graduated flat tax applies",
+                  eng._sel_fitness(b) < 45.0 - 20.0)
+
+            # frontier immigrants point at under-explored indicators
+            eng._indicator_usage = {i: 10_000 for i in
+                                    sl.indicator_usage(1.0)} or {"close": 10_000}
+            from evolution.genome import INDICATORS
+            eng._indicator_usage = {i: 10_000 for i in INDICATORS}
+            eng._indicator_usage["market_stress_index"] = 0
+            random.seed(5)
+            hits = 0
+            for _ in range(40):
+                fg = eng._frontierize(random_genome())
+                if any(c.indicator == "market_stress_index"
+                       for c in fg.entry_conditions):
+                    hits += 1
+            check(f"frontier biases to unexplored indicator ({hits}/40)",
+                  hits >= 25)
+
+            # dashboard explore page renders with data + drill-down
+            import dashboard as dbmod
+            page = dbmod.explore_page()
+            check("explore page renders cards",
+                  "Exploration lab" in page and "MEANREV" in page)
+            page2 = dbmod.explore_page(logic="MEANREV")
+            check("drill-down renders family + raw log tables",
+                  "sub-families" in page2 and "Raw strategy log" in page2)
+        finally:
+            sl.LOG_DB, pf.GRADUATED_PATH = old_db, old_grad
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -794,6 +878,7 @@ def main():
     test_prune_dir()
     test_embargo_and_cross_asset(features)
     test_derivatives_collector()
+    test_exploration(features)
 
     with tempfile.TemporaryDirectory() as td:
         _redirect_state_to_tmp(Path(td))

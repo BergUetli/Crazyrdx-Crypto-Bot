@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-05 — Exploration overhaul: anti-monoculture engine + strategy lab UI
+
+Diagnosis on live data confirmed exploration collapse: the SAME family won
+40/40 recent cycles; OR logic held 82% of exam slots (MEANREV/BREAKOUT/TREND:
+zero); 902 of 4,483 kills were micro-variants of one neighborhood; one family
+re-entered the funnel 43x because passers beyond the capped champion board
+were neither champions nor killed.
+
+- **Strategy log** (`sim/evolution/strategy_log.py`, sim/data/strategy_log.db):
+  every evaluated genome is recorded (family, indicators, fitness, trades,
+  funnel verdict). The search's lab notebook — nothing tried is forgotten.
+  45-day retention, pruned daily.
+- **Exploration tax**: selection-time fitness penalty
+  EXPLORE_FAMILY_TAX*ln(1+recent_tries) per family + flat
+  EXPLORE_GRADUATED_TAX for champion/graduated families. Reported fitness
+  stays raw; only breeding selection feels it — diminishing returns force
+  the GA off exhausted attractors. Tunables in success_criteria.py.
+- **Graduated registry** (`graduated_families.json`): families that PASS the
+  funnel are remembered and never re-examined (pass-once semantics), ending
+  the pass-churn loop.
+- **Stratified funnel slots**: the best eligible candidate of EACH logic
+  family gets an exam slot before fitness fills the rest — every strategy
+  class keeps receiving exam feedback and kill-archive learning.
+- **Frontier immigrants**: 30% of fresh genomes point one condition at an
+  under-explored indicator (inverse-frequency sampling) — coverage gaps get
+  probed deliberately.
+- **Complexity ceiling raised**: entry rules up to 6 conditions
+  (MAX_CONDITIONS in genome.py), mass still on 2-4.
+- **New /explore dashboard page** ("Exploration lab"): per-logic cards
+  (tried / distinct families / % viable / % positive / exam pass-fail),
+  factor-coverage report with never-tried list, and two-level drill-down to
+  the raw per-strategy log. Linked from the main dashboard header.
+- Suite now 88 checks.
+
+
 ## 2026-08-02 (fifth pass) — Research-backed upgrades: embargo, cross-asset check, derivatives data
 
 Based on a literature/industry research pass (Liu-Tsyvinski-Wu factors, funding

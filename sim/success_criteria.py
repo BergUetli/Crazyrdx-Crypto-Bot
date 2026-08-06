@@ -40,6 +40,18 @@ LAB_BENCH_EXCESS_FACTOR = 1.25    # and at least 25% above it when it is positiv
 # Embargo between in-sample and out-of-sample windows: candidates must not be
 # scored on bars adjacent to their training data (boundary leakage hygiene).
 LAB_EMBARGO_BARS = 24
+# --- Exploration control (anti-monoculture) ---
+# Selection-time fitness tax per family, scaled by how often that family was
+# already tried recently: tax = EXPLORE_FAMILY_TAX * ln(1 + recent_tries).
+# Reported fitness stays raw; only breeding selection feels the tax, so a
+# family tried 900 times stops hogging elite slots and the GA must move on.
+EXPLORE_FAMILY_TAX = 8.0
+EXPLORE_FAMILY_WINDOW_DAYS = 3
+# Extra flat tax for families already on the champion board or graduated
+# (funnel-passed): they are done; re-breeding them adds nothing.
+EXPLORE_GRADUATED_TAX = 25.0
+# Fraction of immigrants biased toward least-explored indicators
+EXPLORE_FRONTIER_FRACTION = 0.3
 # Cross-asset check: candidate also backtested on BTC/ETH features. Advisory
 # for now (recorded, never blocks); flip to True to enforce once a month of
 # transfer statistics exists. Literature: momentum-style edges concentrate in
