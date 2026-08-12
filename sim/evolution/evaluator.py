@@ -24,6 +24,7 @@ from evolution.genome import EntryCondition, Filter, ExitRule, StrategyGenome
 from layer1.backtest_engine import BacktestEngine, LatencyModel
 from layer1.multi_pair import add_cross_pair_features, load_multi_pair
 from success_criteria import (
+    BOOK_USD,
     FEE_RATE_BASE,
     FITNESS_MAX as SC_FITNESS_MAX,
     FITNESS_MIN as SC_FITNESS_MIN,
@@ -81,7 +82,7 @@ class GenomeEvaluator:
     def __init__(
         self,
         features: List[Dict[str, Any]],
-        initial_capital: float = 100.0,
+        initial_capital: float = BOOK_USD,
         fee_rate: float = FEE_RATE_BASE,  # from success_criteria (Jupiter-measured)
         latency_model: Optional[LatencyModel] = None,
         augment: bool = True,
@@ -241,7 +242,9 @@ class GenomeEvaluator:
         if result.total_trades <= 0:
             return -200.0
 
-        pnl = float(result.total_pnl or 0.0)
+        # Normalize to a $100-equivalent book so fitness ranking scale
+        # (clamps, bonuses) is invariant to BOOK_USD changes
+        pnl = float(result.total_pnl or 0.0) * (100.0 / BOOK_USD)
         trades = int(result.total_trades or 0)
         dd = float(result.max_drawdown or 0.0)
         wr = float(result.win_rate or 0.0)
@@ -299,6 +302,8 @@ class GenomeEvaluator:
     def _build_signal_fn(self, genome: StrategyGenome):
         """Map genome DNA to a candle signal function."""
         strategy_type = genome.entry_logic
+
+        derived_cache: Dict[int, Any] = {}
 
         def signal_fn(
             features: List[Dict], idx: int
@@ -412,18 +417,40 @@ class GenomeEvaluator:
                     return (direction, 0.5, genome.sizing_base)
                 return None
 
-            # Threshold AND/OR
+            # Threshold AND/OR/KOFN — same math as the fast path, incl.
+            # invented (derived) conditions, via shared cond_series helper
             conditions_met: List[bool] = []
-            for cond in genome.entry_conditions:
-                value = f.get(cond.indicator, 0.0)
+            key = id(features)
+            if key not in derived_cache:
+                try:
+                    from layer1.fast_signals import get_columns, cond_series
+                    _cols = get_columns(features)
+                    derived_cache[key] = [
+                        cond_series(c, _cols, len(features))
+                        for c in genome.entry_conditions
+                    ]
+                except Exception:
+                    derived_cache[key] = None
+            prep = derived_cache.get(key)
+            for ci, cond in enumerate(genome.entry_conditions):
+                if prep is not None:
+                    varr, thr = prep[ci]
+                    value = float(varr[idx])
+                    threshold = thr
+                    if not np.isfinite(value):
+                        conditions_met.append(False)
+                        continue
+                else:
+                    value = f.get(cond.indicator, 0.0)
+                    threshold = cond.threshold
                 if cond.operator == ">":
-                    met = value > cond.threshold
+                    met = value > threshold
                 elif cond.operator == "<":
-                    met = value < cond.threshold
+                    met = value < threshold
                 elif cond.operator == ">=":
-                    met = value >= cond.threshold
+                    met = value >= threshold
                 elif cond.operator == "<=":
-                    met = value <= cond.threshold
+                    met = value <= threshold
                 else:
                     met = False
                 conditions_met.append(met)
@@ -431,6 +458,10 @@ class GenomeEvaluator:
             use_logic = logic if strategy_type == "TFT" else genome.entry_logic
             if use_logic == "AND":
                 entry_signal = all(conditions_met) if conditions_met else False
+            elif use_logic == "KOFN":
+                k = min(max(2, int(getattr(genome, "k_of_n", 2) or 2)),
+                        max(len(conditions_met), 1))
+                entry_signal = sum(conditions_met) >= k if conditions_met else False
             else:
                 entry_signal = any(conditions_met) if conditions_met else False
             if not entry_signal:

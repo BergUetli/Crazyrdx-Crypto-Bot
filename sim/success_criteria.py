@@ -18,7 +18,8 @@ from typing import Any, Dict, List, Optional
 # ---------------------------------------------------------------------------
 # Book / costs (shared assumptions)
 # ---------------------------------------------------------------------------
-BOOK_USD = 100.0
+BOOK_USD = 500.0  # raised from 100 (2026-08-12, user decision)
+BOOK_SCALE = BOOK_USD / 100.0  # dollar bars scale with the book; % bars stay fixed
 FEE_RATE_BASE = 0.00022  # 2.2 bps Jupiter-measured taker (per side in engine)
 FEE_RATE_STRESS_MID = 0.0005  # 5 bps
 FEE_RATE_STRESS_HIGH = 0.0010  # 10 bps
@@ -35,7 +36,7 @@ LONG_ONLY = True
 # positive PnL just by being exposed. OOS profit must beat what the SAME
 # exposure (time-in-market x position size) would have earned from market
 # drift alone, by at least this margin.
-LAB_BENCH_MIN_EXCESS_USD = 0.25   # at least $0.25 above the exposure benchmark
+LAB_BENCH_MIN_EXCESS_USD = 0.0025 * BOOK_USD  # 0.25% of book above the benchmark
 LAB_BENCH_EXCESS_FACTOR = 1.25    # and at least 25% above it when it is positive
 # Embargo between in-sample and out-of-sample windows: candidates must not be
 # scored on bars adjacent to their training data (boundary leakage hygiene).
@@ -76,7 +77,7 @@ LAB_PERTURB_RETENTION = 0.40
 LAB_MEV_BREAK_EVEN_MIN = 0.20  # must still work until MEV p > 20%
 LAB_DSR_MIN = 0.50
 LAB_DSR_COLD_START_TRIALS = 200
-LAB_DSR_ALT_OOS_PNL = 5.0  # $ on $100 book
+LAB_DSR_ALT_OOS_PNL = 0.05 * BOOK_USD  # 5% of book
 LAB_DSR_ALT_WF_RATE = 0.80
 
 # Search fitness (ranking only — not dollars)
@@ -93,8 +94,8 @@ PAPER_MIN_DAYS = 30
 # In a 30d forward window, trade count can be lower than full-sample LAB 30.
 # Still require a usable sample; do not set this above typical 30d capacity.
 PAPER_MIN_TRADES = 20
-PAPER_MIN_NET_PNL_USD = 5.0  # +5% on $100 book after fees in the forward window
-PAPER_TARGET_NET_PNL_USD = 10.0  # +10% stretch
+PAPER_MIN_NET_PNL_USD = 0.05 * BOOK_USD  # +5% of book after fees in the forward window
+PAPER_TARGET_NET_PNL_USD = 0.10 * BOOK_USD  # +10% stretch
 PAPER_MAX_DRAWDOWN = 0.15  # 15% preferred
 PAPER_MAX_DRAWDOWN_HARD = 0.20  # 20% fail
 PAPER_MAX_WEEKLY_LOSS_FRAC = 0.10  # no week worse than -10% without thesis
@@ -106,11 +107,11 @@ LAB_MIN_NET_PNL_USD = 0.01  # essentially > 0 after fees on $100 book
 # ---------------------------------------------------------------------------
 # Stage 3 — LIVE micro (only after paper)
 # ---------------------------------------------------------------------------
-LIVE_START_USD = 25.0  # not full $100 on day one
-LIVE_MAX_BOOK_USD = 100.0
+LIVE_START_USD = 0.25 * BOOK_USD  # not the full book on day one
+LIVE_MAX_BOOK_USD = BOOK_USD
 LIVE_MIN_DAYS = 30
 LIVE_MIN_NET_PNL_USD = 0.0  # "didn't die" floor
-LIVE_TARGET_NET_PNL_USD = 5.0
+LIVE_TARGET_NET_PNL_USD = 0.05 * BOOK_USD
 LIVE_MAX_DRAWDOWN = 0.20
 LIVE_KILL_DRAWDOWN = 0.20
 LIVE_KILL_CONSEC_LOSS_DAYS = 5

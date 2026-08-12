@@ -558,9 +558,16 @@ class PromotionFunnel:
         scale-free. would_pass: ≥1 other asset profitable (with ≥10 trades)
         and no tested asset losing more than 10% of the book.
         """
-        if genome.entry_logic in ("AND", "OR", "TFT"):
-            used = {c.indicator for c in (genome.entry_conditions or [])}
-            bound = used & self.SCALE_BOUND_INDICATORS
+        if genome.entry_logic in ("AND", "OR", "KOFN", "TFT"):
+            bound = set()
+            for c in (genome.entry_conditions or []):
+                comb = getattr(c, "combine", "") or ""
+                if comb == "ratio":
+                    continue  # ratio of same-unit series is scale-free
+                names = {c.indicator}
+                if comb:
+                    names.add(getattr(c, "indicator_b", "") or "")
+                bound |= names & self.SCALE_BOUND_INDICATORS
             if bound:
                 return {"passed": True, "would_pass": True,
                         "skipped": f"scale-bound conditions: {sorted(bound)}"}

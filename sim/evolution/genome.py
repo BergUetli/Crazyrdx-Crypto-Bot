@@ -160,7 +160,8 @@ def calibrate_threshold_ranges(
 
 # Categorical options
 # RANDOM kept only as optional offline baseline control, never used in selection.
-LOGIC_OPS = ["AND", "OR", "MEANREV", "BREAKOUT", "TREND", "TFT"]
+LOGIC_OPS = ["AND", "OR", "KOFN", "MEANREV", "BREAKOUT", "TREND", "TFT"]
+COMBINE_OPS = ["ratio", "diff"]  # derived-feature combinators
 MAX_CONDITIONS = 6  # complexity ceiling for entry rule depth
 BASELINE_LOGIC_OPS = ["RANDOM"]
 SIZING_METHODS = ["fixed", "kelly", "volatility_scaled", "equal_weight"]
@@ -195,7 +196,8 @@ def dna_signature(genome: "StrategyGenome") -> Tuple:
     """
     conds = tuple(
         sorted(
-            (c.indicator, c.operator, round(float(c.threshold), 6))
+            (c.indicator, c.operator, round(float(c.threshold), 6),
+             getattr(c, "combine", ""), getattr(c, "indicator_b", ""))
             for c in (genome.entry_conditions or [])
         )
     )
@@ -210,6 +212,7 @@ def dna_signature(genome: "StrategyGenome") -> Tuple:
     )
     return (
         genome.entry_logic,
+        int(getattr(genome, "k_of_n", 2) or 2),
         conds,
         filts,
         genome.sizing_method,
@@ -224,6 +227,12 @@ class EntryCondition:
     indicator: str
     operator: str  # ">", "<", ">=", "<=", "==", "crosses_above", "crosses_below"
     threshold: float
+    # Invention grammar v1: when combine is set, the condition tests a
+    # DERIVED series the engine composed itself — ratio or difference of two
+    # indicators — against a self-calibrating quantile threshold (threshold
+    # is then a quantile in [0.05, 0.95], not a raw value).
+    combine: str = ""        # "" | "ratio" | "diff"
+    indicator_b: str = ""    # second operand when combine is set
 
 
 @dataclass
@@ -248,6 +257,9 @@ class StrategyGenome:
     # Filters
     filters: List[Filter] = field(default_factory=list)
     
+    # KOFN logic: entry fires when at least k_of_n conditions are true
+    k_of_n: int = 2
+
     # Sizing
     sizing_method: str = "fixed"
     sizing_base: float = 0.25
@@ -279,6 +291,7 @@ class StrategyGenome:
         return cls(
             entry_conditions=entry_conds,
             entry_logic=data.get("entry_logic", "AND"),
+            k_of_n=int(data.get("k_of_n", 2) or 2),
             filters=filters,
             sizing_method=data.get("sizing_method", "fixed"),
             sizing_base=data.get("sizing_base", 0.25),
@@ -316,16 +329,29 @@ def random_genome(generation: int = 0) -> StrategyGenome:
     conditions = []
     for _ in range(n_conditions):
         indicator = random.choice(weighted_indicators)
-        min_val, max_val = get_threshold_range(indicator)
-        threshold = random.uniform(min_val, max_val)
-        operator = random.choice([">", "<", ">=", "<="])
-        conditions.append(EntryCondition(indicator, operator, threshold))
+        if random.random() < 0.20:
+            # Invented condition: relationship between two indicators,
+            # thresholded at a self-calibrating quantile
+            conditions.append(EntryCondition(
+                indicator=indicator,
+                operator=random.choice([">", "<"]),
+                threshold=random.uniform(0.10, 0.90),
+                combine=random.choice(COMBINE_OPS),
+                indicator_b=random.choice(weighted_indicators),
+            ))
+        else:
+            min_val, max_val = get_threshold_range(indicator)
+            conditions.append(EntryCondition(
+                indicator, random.choice([">", "<", ">=", "<="]),
+                random.uniform(min_val, max_val)))
 
     # Selection pool only (no RANDOM lottery tickets)
     entry_logic = random.choices(
-        ["AND", "OR", "MEANREV", "BREAKOUT", "TREND", "TFT"],
-        weights=[2, 2, 2, 2, 2, 1],
+        ["AND", "OR", "KOFN", "MEANREV", "BREAKOUT", "TREND", "TFT"],
+        weights=[2, 2, 2, 2, 2, 2, 1],
     )[0]
+    k_of_n = random.randint(2, max(2, min(4, len(conditions)))) \
+        if entry_logic == "KOFN" else 2
 
     # Random filters (0-2)
     n_filters = random.randint(0, 2)
@@ -370,6 +396,7 @@ def random_genome(generation: int = 0) -> StrategyGenome:
     return StrategyGenome(
         entry_conditions=conditions,
         entry_logic=entry_logic,
+        k_of_n=k_of_n,
         filters=filters,
         sizing_method=sizing_method,
         sizing_base=sizing_base,
@@ -392,19 +419,36 @@ def mutate(genome: StrategyGenome, mutation_rate: float = 0.1) -> StrategyGenome
     # Mutate entry conditions
     for i, cond in enumerate(new_genome.entry_conditions):
         if random.random() < mutation_rate:
-            # Threshold: mostly local Gaussian nudge (exploitation),
-            # occasionally full re-roll (exploration)
-            min_val, max_val = get_threshold_range(cond.indicator)
-            if random.random() < 0.7:
-                span = max_val - min_val
-                nudged = cond.threshold + random.gauss(0.0, 0.1 * span)
-                cond.threshold = min(max_val, max(min_val, nudged))
+            if cond.combine:
+                # Derived condition: quantile nudge, or re-roll a component
+                r = random.random()
+                if r < 0.6:
+                    cond.threshold = min(0.95, max(
+                        0.05, cond.threshold + random.gauss(0.0, 0.10)))
+                elif r < 0.8:
+                    cond.indicator_b = random.choice(INDICATORS)
+                else:
+                    cond.combine = random.choice(COMBINE_OPS)
             else:
-                cond.threshold = random.uniform(min_val, max_val)
+                # Threshold: mostly local Gaussian nudge (exploitation),
+                # occasionally full re-roll (exploration)
+                min_val, max_val = get_threshold_range(cond.indicator)
+                if random.random() < 0.7:
+                    span = max_val - min_val
+                    nudged = cond.threshold + random.gauss(0.0, 0.1 * span)
+                    cond.threshold = min(max_val, max(min_val, nudged))
+                else:
+                    cond.threshold = random.uniform(min_val, max_val)
         if random.random() < mutation_rate:
             # Mutate operator
             cond.operator = random.choice([">", "<", ">=", "<="])
     
+    # KOFN: nudge the vote requirement within valid bounds
+    if new_genome.entry_logic == "KOFN" and random.random() < mutation_rate:
+        n = max(2, len(new_genome.entry_conditions))
+        new_genome.k_of_n = min(n, max(2, new_genome.k_of_n
+                                       + random.choice([-1, 1])))
+
     # Mutate logic within selection pool only
     if random.random() < mutation_rate:
         if new_genome.entry_logic in ("AND", "OR"):
@@ -449,6 +493,7 @@ def crossover(parent1: StrategyGenome, parent2: StrategyGenome) -> StrategyGenom
     """Combine two parent genomes."""
     child = StrategyGenome(
         entry_logic=random.choice([parent1.entry_logic, parent2.entry_logic]),
+        k_of_n=random.choice([parent1.k_of_n, parent2.k_of_n]),
         sizing_method=random.choice([parent1.sizing_method, parent2.sizing_method]),
         sizing_base=(parent1.sizing_base + parent2.sizing_base) / 2,
         sizing_max=max(parent1.sizing_max, parent2.sizing_max),

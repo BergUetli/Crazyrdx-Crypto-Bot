@@ -73,27 +73,61 @@ def _first_threshold(genome, default: float) -> float:
     return float(default)
 
 
-def _and_or_masks(genome, cols, n, use_logic: str):
-    """Threshold AND/OR entry mask + per-bar strength (mean of met)."""
-    if not genome.entry_conditions:
-        return np.zeros(n, dtype=bool), np.zeros(n)
-    mets = []
-    for cond in genome.entry_conditions:
-        v = _col(cols, n, cond.indicator, default=0.0)
-        t = float(cond.threshold)
-        if cond.operator == ">":
+def cond_series(cond, cols, n):
+    """(values, threshold_value) for one condition — shared by fast and
+    legacy paths so invented (derived) conditions stay path-equivalent.
+
+    Plain condition: raw indicator column vs raw threshold.
+    Derived condition (combine set): engine-composed series (ratio/diff of
+    two indicators) vs a self-calibrating quantile of that series.
+    """
+    a = _col(cols, n, cond.indicator, default=0.0)
+    combine = getattr(cond, "combine", "") or ""
+    if not combine:
+        return a, float(cond.threshold)
+    b = _col(cols, n, getattr(cond, "indicator_b", "") or cond.indicator,
+             default=0.0)
+    if combine == "ratio":
+        with np.errstate(divide="ignore", invalid="ignore"):
+            v = np.where(np.abs(b) > 1e-12, a / np.where(b == 0, 1.0, b),
+                         np.nan)
+    else:  # diff
+        v = a - b
+    q = min(0.95, max(0.05, float(cond.threshold)))
+    finite = v[np.isfinite(v)]
+    thr = float(np.quantile(finite, q)) if finite.size >= 20 else 0.0
+    return v, thr
+
+
+def _cond_met(cond, cols, n):
+    v, t = cond_series(cond, cols, n)
+    op = cond.operator
+    with np.errstate(invalid="ignore"):
+        if op == ">":
             met = v > t
-        elif cond.operator == "<":
+        elif op == "<":
             met = v < t
-        elif cond.operator == ">=":
+        elif op == ">=":
             met = v >= t
-        elif cond.operator == "<=":
+        elif op == "<=":
             met = v <= t
         else:
             met = np.zeros(n, dtype=bool)
-        mets.append(met)
-    m = np.vstack(mets)
-    entry = m.all(axis=0) if use_logic == "AND" else m.any(axis=0)
+    return np.where(np.isfinite(v), met, False)
+
+
+def _and_or_masks(genome, cols, n, use_logic: str):
+    """AND / OR / KOFN entry mask + per-bar strength (mean of met)."""
+    if not genome.entry_conditions:
+        return np.zeros(n, dtype=bool), np.zeros(n)
+    m = np.vstack([_cond_met(c, cols, n) for c in genome.entry_conditions])
+    if use_logic == "AND":
+        entry = m.all(axis=0)
+    elif use_logic == "KOFN":
+        k = min(max(2, int(getattr(genome, "k_of_n", 2) or 2)), m.shape[0])
+        entry = m.sum(axis=0) >= k
+    else:
+        entry = m.any(axis=0)
     strength = m.sum(axis=0) / float(m.shape[0])
     return entry, strength
 
@@ -223,8 +257,9 @@ def build_array_signal_fn(genome, features: List[Dict[str, Any]]):
         strength = np.where(active, tft_strength, and_strength)
         size = np.where(active, tft_size, and_size)
 
-    else:  # AND / OR
-        entry, strength = _and_or_masks(genome, cols, n, st if st == "AND" else "OR")
+    else:  # AND / OR / KOFN
+        entry, strength = _and_or_masks(
+            genome, cols, n, st if st in ("AND", "KOFN") else "OR")
         entry &= _filters_mask(genome, cols, n)
         roc1 = _col(cols, n, "price_roc_1h", "price_roc_15m")
         direction = np.where(entry, np.where(roc1 > 0, 1, -1), 0).astype(np.int8)

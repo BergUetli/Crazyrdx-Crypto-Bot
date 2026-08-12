@@ -632,9 +632,10 @@ def test_benchmark_gate(features):
           pf.benchmark_gate_passed(bench * 2, bench))
     check("in a flat/down market, positive PnL passes",
           pf.benchmark_gate_passed(1.0, -0.5))
-    check("tiny benchmark still needs $0.25 excess",
-          not pf.benchmark_gate_passed(0.3, 0.1)
-          and pf.benchmark_gate_passed(0.36, 0.1))
+    from success_criteria import LAB_BENCH_MIN_EXCESS_USD as _MINX
+    check("tiny benchmark still needs the minimum excess",
+          not pf.benchmark_gate_passed(0.1 + _MINX * 0.9, 0.1)
+          and pf.benchmark_gate_passed(0.1 + _MINX * 1.1, 0.1))
 
     # Champion-family skip in funnel candidate selection
     from evolution.genome import random_genome
@@ -984,6 +985,85 @@ def test_diversity_invariants(features):
             sl.LOG_DB, pf.GRADUATED_PATH, pf.CHAMPIONS_PATH, ka._ARCHIVE = old
 
 
+def test_invention_grammar(features):
+    print("\n[19] invention grammar: derived conditions + KOFN logic")
+    from evolution.genome import (random_genome, mutate, StrategyGenome,
+                                  EntryCondition)
+    from evolution.evaluator import GenomeEvaluator
+    from layer1.fast_signals import build_array_signal_fn
+    from layer1.backtest_engine import BacktestEngine
+    random.seed(91)
+
+    # Generator actually invents
+    draws = [random_genome() for _ in range(200)]
+    n_derived = sum(1 for g in draws for c in g.entry_conditions if c.combine)
+    n_kofn = sum(1 for g in draws if g.entry_logic == "KOFN")
+    check(f"generator invents derived conditions ({n_derived}) and KOFN ({n_kofn})",
+          n_derived > 20 and n_kofn > 10)
+
+    # Backward compat: old genome dicts (no new fields) still load
+    g_old = StrategyGenome.from_dict({
+        "entry_logic": "AND",
+        "entry_conditions": [{"indicator": "price_roc_1d", "operator": ">",
+                              "threshold": 5.0}],
+        "exit_rules": [{"exit_type": "time_stop", "value": 6}]})
+    check("old genome dicts load with defaults",
+          g_old.k_of_n == 2 and g_old.entry_conditions[0].combine == "")
+
+    # Path equivalence for invented genomes: legacy vs fast, identical trades
+    ev = GenomeEvaluator(features, augment=False)
+    feats = ev.features
+    engine_slow = BacktestEngine(fast_columns=False)
+    engine_fast = BacktestEngine(fast_columns=True)
+    mismatch = 0
+    tested = 0
+    for i in range(24):
+        g = random_genome()
+        g.entry_logic = "KOFN" if i % 2 == 0 else "OR"
+        g.entry_conditions = [
+            EntryCondition("funding_rate_roc", "<", 0.6, combine="ratio",
+                           indicator_b="volatility_1d"),
+            EntryCondition("taker_flow_imbalance", ">", 0.4, combine="diff",
+                           indicator_b="eth_leading_sol"),
+            EntryCondition("price_roc_4h", ">", -50.0),
+        ]
+        g.k_of_n = 2
+        r_old = engine_slow.run_backtest("l", "SOL/USDC", feats,
+                                         ev._build_signal_fn(g),
+                                         exit_rules=g.exit_rules)
+        fast_fn = build_array_signal_fn(g, feats)
+        r_new = engine_fast.run_backtest("f", "SOL/USDC", feats, fast_fn,
+                                         exit_rules=g.exit_rules)
+        tested += 1
+        if (r_old.total_trades != r_new.total_trades
+                or abs(r_old.total_pnl - r_new.total_pnl) > 1e-9):
+            mismatch += 1
+    check(f"invented genomes path-equivalent ({tested} tested)", mismatch == 0,
+          f"{mismatch} mismatches")
+
+    # Derived conditions actually fire trades (self-calibrating quantiles)
+    g = random_genome()
+    g.entry_logic = "OR"
+    g.entry_conditions = [EntryCondition("taker_flow_imbalance", ">", 0.7,
+                                         combine="ratio",
+                                         indicator_b="volatility_1d")]
+    res = ev.evaluate(g)
+    check("derived-only strategy produces trades",
+          res["total_trades"] > 0, str(res["total_trades"]))
+
+    # Mutation keeps invented fields valid
+    random.seed(92)
+    ok = True
+    for _ in range(60):
+        m = mutate(g, mutation_rate=1.0)
+        for c in m.entry_conditions:
+            if c.combine and not (0.05 <= c.threshold <= 0.95):
+                ok = False
+        if m.entry_logic == "KOFN" and not (2 <= m.k_of_n <= 6):
+            ok = False
+    check("mutation keeps quantiles and k in bounds", ok)
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -1004,6 +1084,7 @@ def main():
     test_embargo_and_cross_asset(features)
     test_derivatives_collector()
     test_exploration(features)
+    test_invention_grammar(features)
     test_diversity_invariants(features)
 
     with tempfile.TemporaryDirectory() as td:

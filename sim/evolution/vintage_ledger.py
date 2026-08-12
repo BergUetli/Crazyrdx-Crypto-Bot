@@ -158,7 +158,11 @@ def freeze_cycle(best_genome, features: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def _baseline_scores(kind: str, fwd: List[Dict[str, Any]]) -> Dict[str, float]:
     closes = [f["features"]["close"] for f in fwd]
-    book = 100.0 * BASELINE_BOOK_FRACTION
+    try:
+        from success_criteria import BOOK_USD as _BOOK
+    except Exception:
+        _BOOK = 100.0
+    book = _BOOK * BASELINE_BOOK_FRACTION
     if kind == "baseline_bh":
         gross = (closes[-1] / closes[0] - 1.0) * book
         net = gross - book * FEE_RATE * 2 - FIXED_COST * 2

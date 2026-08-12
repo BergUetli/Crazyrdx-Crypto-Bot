@@ -2,6 +2,41 @@
 
 All notable changes to this project are documented here.
 
+## 2026-08-12 — Reboot-proofing, $500 book, invention grammar v1
+
+- **Reboot incident fixes**: strategy_log.db corrupted by a mid-write reboot
+  (writes then failed silently for days) — now WAL + synchronous=NORMAL +
+  loud one-time warning; corrupt file quarantined. Runner gained a
+  single-instance lock. All three processes (runner, dashboard, derivatives
+  collector) now run as LaunchAgents with RunAtLoad+KeepAlive — reboot-proof.
+  Dashboard moved to port 8770 (m5-receiver owns 8765 at boot).
+- **Book raised to $500** (`BOOK_USD`): fixed swap costs drop from ~15bps to
+  ~3bps of position — the viable-strategy space widens ~5x. All dollar bars
+  now scale with the book (5%/month standards preserved); search fitness is
+  normalized to a $100-equivalent so ranking scales stay comparable; ledger
+  baselines use the same book. Ledger re-scores all vintages uniformly under
+  current settings, so cross-vintage comparisons remain fair (dollar values
+  in past readings scale up ~5x).
+- **Invention grammar v1 — the engine now composes its own signals**:
+  (a) DERIVED conditions: ratio/diff of any two indicators, thresholded at
+  self-calibrating quantiles (~6,900 novel composite signals per combinator,
+  none hand-picked); (b) KOFN logic: "at least k of n conditions agree" —
+  a decision structure beyond AND/OR. Fully integrated: generation (20% of
+  conditions invented), mutation (quantile nudges, component swaps, k
+  nudges), crossover, DNA signatures, kill archive, both signal paths with
+  PROVEN trade-list equivalence, cross-asset transferability (ratios of
+  same-unit series are scale-free). Everything invented faces the same
+  9-gate exam and forward ledger.
+- **Audit (user-requested "are the positives real?")**: measurement chain
+  verified — 0/234 forward scores violate the freeze boundary, random
+  controls genuinely trade (median 3), all DBs pass integrity_check. Honest
+  recalibration: the strong W31 cohort was dominated by pre-beta-gate
+  (demoted) champions riding a rally (med +$2.36/30d vs B&H $4.90-7.41);
+  post-beta-gate champions median -$2.19/30d on small early samples. No
+  skill demonstrated yet; TOO EARLY stands with better-calibrated hopes.
+- Suite now 101 checks.
+
+
 ## 2026-08-05 (later) — Diversity guard + monoculture regression tests
 
 Response to the 40/40 monoculture incident: the test suite now asserts
