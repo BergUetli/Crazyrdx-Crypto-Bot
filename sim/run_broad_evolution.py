@@ -141,6 +141,17 @@ def load_seed_genomes(max_seeds: int = 5):
 
 
 def main():
+    # Single-instance lock: two concurrent runners double-write shared
+    # sqlite state (the suspected cause of one corruption). If another
+    # runner is alive, exit quietly — launchd/KeepAlive retries later.
+    import os as _os
+    import subprocess as _sp
+    _pids = _sp.run(["pgrep", "-f", "run_broad_evolution.py"],
+                    capture_output=True, text=True).stdout.split()
+    if any(p != str(_os.getpid()) for p in _pids):
+        print(f"Another runner is already alive ({_pids}) — exiting.")
+        return
+
     features = get_historical_features_1h("SOL/USDC", limit=4000)
     print(f"Loaded {len(features)} 1h features, fields={len(features[0]['features'])}")
     print(

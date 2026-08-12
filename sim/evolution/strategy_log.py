@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 from config import DATA_DIR
 
 LOG_DB = DATA_DIR / "strategy_log.db"
+_WRITE_WARNED = False
 
 
 def family_key(logic: str, indicators) -> str:
@@ -39,6 +40,11 @@ def genome_family(genome) -> str:
 def _conn() -> sqlite3.Connection:
     LOG_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(LOG_DB), timeout=15)
+    # WAL + NORMAL sync: resilient to unclean shutdown (reboot mid-write
+    # corrupted the rollback-journal DB once) and to concurrent readers.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA busy_timeout=15000")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS strategies (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,7 +94,12 @@ def log_rows(rows: List[Dict[str, Any]]) -> int:
         conn.commit()
         conn.close()
         return len(rows)
-    except Exception:
+    except Exception as e:
+        global _WRITE_WARNED
+        if not _WRITE_WARNED:
+            _WRITE_WARNED = True
+            print(f"  WARNING: strategy log writes failing ({e}) — "
+                  f"exploration stats will be blind until fixed")
         return 0
 
 
