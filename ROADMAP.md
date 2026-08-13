@@ -58,3 +58,15 @@ wall), then pick from here.
 - Memecoin strategy search (manipulation-saturated, no statistical value).
 - HFT/latency plays, CEX-DEX sub-second arb (colocation game, not ours).
 - Anything manipulative or gray-area: wash trading, spoofing, sandwich MEV.
+
+## Parked 2026-08-12 (evening) — standalone support builds, decision pending
+
+Menu proposed and PARKED by the user for another day; none interfere with the
+running measurement month. Ranked: (1) execution-reality probe — hourly
+Jupiter quote sampler at $125-250 sizes to build an empirical cost curve vs
+the sim's assumed 2.2bps+$0.03+MEV; (2) derivatives signal analyzer — daily
+information-coefficient report over the collected funding/OI/positioning data
+(feeds the planned feature integration); (3) shadow paper-trader — the
+missing PAPER-stage software (champions vs live quotes, own ledger), build
+before Chart D verdict so the 30-day paper clock can start instantly;
+(4) weekly Hermes digest. Recommendation on record: 1+2 first, then 3.
