@@ -93,6 +93,10 @@ def load_all_runs() -> list[dict]:
     if not pop_dir.exists():
         return []
     files = sorted(pop_dir.glob("evolution_*.json"), key=lambda f: f.stat().st_mtime)
+    # Single-threaded server + 10s auto-refresh: parsing hundreds of large
+    # JSON files per request congests the whole dashboard. The charts and
+    # trends only ever use recent runs.
+    files = files[-120:]
     runs = []
     for f in files:
         try:
@@ -1789,6 +1793,16 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):  # noqa: A003
         return
 
+    _cache = {"ts": 0.0, "status": None}
+
+    def _cached_status(self):
+        import time as _t
+        now = _t.time()
+        if Handler._cache["status"] is None or now - Handler._cache["ts"] > 8:
+            Handler._cache["status"] = collect_status()
+            Handler._cache["ts"] = now
+        return Handler._cache["status"]
+
     def do_GET(self):
         if self.path.startswith("/explore"):
             from urllib.parse import urlparse, parse_qs
@@ -1805,7 +1819,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if self.path.startswith("/api"):
-            s = collect_status()
+            s = self._cached_status()
             # compact API
             out = {
                 "now": s["now"],
