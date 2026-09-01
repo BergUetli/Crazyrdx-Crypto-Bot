@@ -1103,6 +1103,15 @@ def test_paper_trader(features):
             n = pt.enroll_new(conn, verbose=False)
             check("enrolled both champion families", n == 2)
             check("re-enroll is idempotent", pt.enroll_new(conn, verbose=False) == 0)
+            # Enrollment anchors at the newest bar (no history replay)
+            anchors = [r[0] for r in conn.execute(
+                "SELECT last_bar_ts FROM enrollments").fetchall()]
+            check("enrollment starts at newest bar, not history",
+                  all(a == features[119]["ts"] for a in anchors))
+            # Simulate time passing: rewind cursor so bars 61.. are 'new'
+            conn.execute("UPDATE enrollments SET last_bar_ts = ?",
+                         (features[60]["ts"],))
+            conn.commit()
 
             stats = pt.process_bars(conn, verbose=False)
             check(f"bars processed ({stats['bars']}), entries "

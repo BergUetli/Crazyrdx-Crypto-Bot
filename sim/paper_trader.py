@@ -126,6 +126,16 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
         ).get("champions", [])
     except Exception:
         return 0
+    # Paper trading starts FORWARD from enrollment: initialize the bar
+    # cursor to the newest closed bar so history is never replayed at
+    # today's live quote (bug caught on first production run).
+    newest_ts = 0
+    try:
+        from layer1.historical_feature_engine_1h import get_historical_features_1h
+        _f = get_historical_features_1h("SOL/USDC", limit=1)
+        newest_ts = int(_f[-1]["ts"]) if _f else 0
+    except Exception:
+        pass
     added = 0
     for c in champs:
         if n_active + added >= MAX_CONCURRENT:
@@ -136,8 +146,9 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
         try:
             conn.execute(
                 "INSERT INTO enrollments (genome_id, family, genome_json, "
-                "enrolled_ts, cash) VALUES (?,?,?,?,?)",
-                (c.get("genome_id"), fam, json.dumps(g), time.time(), BOOK_USD))
+                "enrolled_ts, cash, last_bar_ts) VALUES (?,?,?,?,?,?)",
+                (c.get("genome_id"), fam, json.dumps(g), time.time(),
+                 BOOK_USD, newest_ts))
             added += 1
             if verbose:
                 print(f"  [paper] enrolled {g.get('entry_logic')} "
