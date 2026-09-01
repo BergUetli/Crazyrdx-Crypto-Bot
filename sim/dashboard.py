@@ -1858,7 +1858,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        body = html_page(collect_status()).encode()
+        body = html_page(self._cached_status()).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
