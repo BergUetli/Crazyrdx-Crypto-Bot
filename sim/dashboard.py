@@ -96,7 +96,7 @@ def load_all_runs() -> list[dict]:
     # Single-threaded server + 10s auto-refresh: parsing hundreds of large
     # JSON files per request congests the whole dashboard. The charts and
     # trends only ever use recent runs.
-    files = files[-120:]
+    files = files[-60:]
     runs = []
     for f in files:
         try:
@@ -1798,7 +1798,7 @@ class Handler(BaseHTTPRequestHandler):
     def _cached_status(self):
         import time as _t
         now = _t.time()
-        if Handler._cache["status"] is None or now - Handler._cache["ts"] > 8:
+        if Handler._cache["status"] is None or now - Handler._cache["ts"] > 60:
             Handler._cache["status"] = collect_status()
             Handler._cache["ts"] = now
         return Handler._cache["status"]
