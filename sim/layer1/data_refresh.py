@@ -21,16 +21,28 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from layer1.historical_downloader import download_all_pairs, init_historical_db
+from layer1.historical_downloader import download_candles, init_historical_db
 from layer1.historical_feature_engine_1h import compute_all_features_1h
 
 PAIRS_1H = ["SOL/USDC", "BTC/USDC", "ETH/USDC"]
 
 
+async def _download_all(days: int) -> dict:
+    end = int(time.time() * 1000)
+    start = end - days * 86400_000
+    out = {}
+    for pair in PAIRS_1H:
+        try:
+            out[pair] = await download_candles(pair, start, end, interval="1h")
+        except Exception as e:
+            out[pair] = f"ERR {e}"
+    return out
+
+
 def main() -> int:
     t0 = time.time()
     init_historical_db()
-    counts = asyncio.run(download_all_pairs(days=12, interval="1h"))
+    counts = asyncio.run(_download_all(days=12))
     feats = {}
     for pair in PAIRS_1H:
         try:
