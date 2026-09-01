@@ -323,13 +323,23 @@ def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
         "enrollments": out,
     }
     try:
-        STATUS_JSON.write_text(json.dumps(payload, indent=2))
+        _tmp = STATUS_JSON.with_suffix(".tmp")
+        _tmp.write_text(json.dumps(payload, indent=2))
+        _tmp.replace(STATUS_JSON)  # atomic: dashboard never sees a torn file
     except Exception:
         pass
     return payload
 
 
 def main() -> int:
+    # Single-instance lock (concurrent runs would double-enter positions)
+    import os as _os
+    import subprocess as _sp
+    _pids = _sp.run(["pgrep", "-f", "paper_trader.py"],
+                    capture_output=True, text=True).stdout.split()
+    if any(x != str(_os.getpid()) for x in _pids):
+        print("paper trader: another instance alive — exiting")
+        return 0
     conn = _conn()
     try:
         n_new = enroll_new(conn)

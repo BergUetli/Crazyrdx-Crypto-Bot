@@ -161,6 +161,10 @@ def calibrate_threshold_ranges(
 # Categorical options
 # RANDOM kept only as optional offline baseline control, never used in selection.
 LOGIC_OPS = ["AND", "OR", "KOFN", "MEANREV", "BREAKOUT", "TREND", "TFT"]
+# Forward-feedback tilt (set by the engine from forward_feedback.load()):
+# multiplies logic sampling weights, bounded upstream to [0.5, 2.0]. Adapts
+# ALLOCATION only — gates and scoring never read this.
+LOGIC_WEIGHT_TILT: Dict[str, float] = {}
 COMBINE_OPS = ["ratio", "diff"]  # derived-feature combinators
 MAX_CONDITIONS = 6  # complexity ceiling for entry rule depth
 BASELINE_LOGIC_OPS = ["RANDOM"]
@@ -346,9 +350,12 @@ def random_genome(generation: int = 0) -> StrategyGenome:
                 random.uniform(min_val, max_val)))
 
     # Selection pool only (no RANDOM lottery tickets)
+    _logics = ["AND", "OR", "KOFN", "MEANREV", "BREAKOUT", "TREND", "TFT"]
+    _base_w = [2, 2, 2, 2, 2, 2, 1]
     entry_logic = random.choices(
-        ["AND", "OR", "KOFN", "MEANREV", "BREAKOUT", "TREND", "TFT"],
-        weights=[2, 2, 2, 2, 2, 2, 1],
+        _logics,
+        weights=[w * LOGIC_WEIGHT_TILT.get(l, 1.0)
+                 for l, w in zip(_logics, _base_w)],
     )[0]
     k_of_n = random.randint(2, max(2, min(4, len(conditions)))) \
         if entry_logic == "KOFN" else 2

@@ -643,6 +643,22 @@ class EvolutionEngine:
         except Exception:
             pass
         self._log_buffer: List[Dict[str, Any]] = []
+
+        # Forward-feedback autopilot: search allocation tilts toward
+        # structures with proven FORWARD profit (ledger + paper — signals
+        # the optimizer cannot game). Bounded; gates untouched.
+        self._fwd_family_bonus: Dict[str, float] = {}
+        self._fwd_indicator_w: Dict[str, float] = {}
+        try:
+            from evolution.forward_feedback import load as _fb_load
+            _fb = _fb_load()
+            self._fwd_family_bonus = dict(_fb.get("family_bonus") or {})
+            self._fwd_indicator_w = dict(_fb.get("indicator_weights") or {})
+            from evolution.genome import LOGIC_WEIGHT_TILT
+            LOGIC_WEIGHT_TILT.clear()
+            LOGIC_WEIGHT_TILT.update(_fb.get("logic_weights") or {})
+        except Exception:
+            pass
         self._kill = None
         self.kill_hits = 0  # how many times we avoided a killed neighborhood
         if use_kill_archive:
@@ -677,7 +693,11 @@ class EvolutionEngine:
         if not genome.entry_conditions:
             return genome
         # Inverse-frequency weights: never-tried indicators dominate
-        weights = [1.0 / (1 + self._indicator_usage.get(i, 0)) for i in INDICATORS]
+        weights = [
+            (1.0 / (1 + self._indicator_usage.get(i, 0)))
+            * self._fwd_indicator_w.get(i, 1.0)
+            for i in INDICATORS
+        ]
         pick = random.choices(INDICATORS, weights=weights)[0]
         cond = random.choice(genome.entry_conditions)
         cond.indicator = pick
@@ -956,6 +976,9 @@ class EvolutionEngine:
         tax = EXPLORE_FAMILY_TAX * math.log1p(self._family_recent.get(fam, 0))
         if fam in self._done_families:
             tax += EXPLORE_GRADUATED_TAX
+        # Forward-feedback bonus/malus (capped ±15 at source): families whose
+        # relatives made real forward money breed a little more
+        tax -= self._fwd_family_bonus.get(fam, 0.0)
         tax += self._extra_family_tax.get(fam, 0.0)
         return g.fitness - tax
 

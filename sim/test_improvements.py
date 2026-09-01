@@ -1138,6 +1138,90 @@ def test_paper_trader(features):
              pt.live_price, hfe.get_historical_features_1h) = old_state
 
 
+def test_forward_feedback(features):
+    print("\n[21] autopilot forward-feedback: bounded, gate-untouchable")
+    import tempfile as tf
+    import evolution.forward_feedback as ff
+    import success_criteria as sc
+    gates_before = (sc.LAB_BENCH_MIN_EXCESS_USD, sc.LAB_MAX_DRAWDOWN,
+                    sc.FIXED_COST_PER_SIDE_USD, sc.LAB_WF_MAJORITY,
+                    sc.PAPER_MIN_NET_PNL_USD)
+    with tf.TemporaryDirectory() as td:
+        tmp = Path(td)
+        old = (ff.LEDGER_DB, ff.PAPER_DB, ff.FEEDBACK_JSON)
+        try:
+            ff.LEDGER_DB = tmp / "ledger.db"
+            ff.PAPER_DB = tmp / "paper.db"
+            ff.FEEDBACK_JSON = tmp / "fb.json"
+            conn = sqlite3.connect(str(ff.LEDGER_DB))
+            conn.execute("""CREATE TABLE vintages (id INTEGER PRIMARY KEY,
+                kind TEXT, genome_json TEXT)""")
+            conn.execute("""CREATE TABLE forward_scores (vintage_id INTEGER,
+                pnl_per_30d REAL)""")
+            gid = 1
+            def add(kind, logic, inds, pnls):
+                nonlocal gid
+                for p in pnls:
+                    gj = json.dumps({"entry_logic": logic, "entry_conditions":
+                                     [{"indicator": i} for i in inds]})
+                    conn.execute("INSERT INTO vintages VALUES (?,?,?)",
+                                 (gid, kind, gj))
+                    conn.execute("INSERT INTO forward_scores VALUES (?,?)",
+                                 (gid, p))
+                    gid += 1
+            add("random", "?", [], [0.0] * 30)
+            add("champion", "KOFN", ["funding_rate"], [30.0] * 20)   # winner
+            add("champion", "TREND", ["sma_50"], [-40.0] * 20)       # loser
+            add("champion", "OR", ["close"], [500.0] * 3)            # tiny n
+            conn.commit(); conn.close()
+
+            fb = ff.compute_and_write()
+            lw = fb["logic_weights"]
+            check("forward winners get tilt > 1", lw.get("KOFN", 0) > 1.2)
+            check("forward losers get tilt < 1", lw.get("TREND", 9) < 0.8)
+            check("all tilts bounded [0.5, 2.0]",
+                  all(0.5 <= w <= 2.0 for w in lw.values())
+                  and all(0.5 <= w <= 2.0
+                          for w in fb["indicator_weights"].values()))
+            check("family bonus capped at ±15",
+                  all(abs(b) <= 15 for b in fb["family_bonus"].values()))
+            check("tiny-n outlier shrunk (no 500-pnl takeover)",
+                  lw.get("OR", 0) <= 2.0)
+            check("feedback json written atomically",
+                  (tmp / "fb.json").exists())
+        finally:
+            ff.LEDGER_DB, ff.PAPER_DB, ff.FEEDBACK_JSON = old
+    gates_after = (sc.LAB_BENCH_MIN_EXCESS_USD, sc.LAB_MAX_DRAWDOWN,
+                   sc.FIXED_COST_PER_SIDE_USD, sc.LAB_WF_MAJORITY,
+                   sc.PAPER_MIN_NET_PNL_USD)
+    check("GATES ARE UNTOUCHED by the feedback loop",
+          gates_before == gates_after)
+
+    # Engine consumes feedback: bonus shifts selection, bounded
+    from evolution.evaluator import EvolutionEngine
+    from evolution.genome import random_genome, LOGIC_WEIGHT_TILT
+    from evolution.strategy_log import genome_family
+    random.seed(101)
+    eng = EvolutionEngine(features, population_size=10, n_workers=1)
+    a = random_genome(); a.fitness = 50.0
+    eng._family_recent = {}
+    eng._done_families = set()
+    eng._fwd_family_bonus = {genome_family(a): 15.0}
+    check("engine applies forward bonus in selection",
+          abs(eng._sel_fitness(a) - 65.0) < 1e-9)
+    LOGIC_WEIGHT_TILT.clear()
+
+
+def test_sentinel():
+    print("\n[22] sentinel watchdog")
+    import sentinel as st
+    h = st.run_checks()
+    check("sentinel runs all checks",
+          len(h["alerts"]) + len(h["ok"]) == 7, str(h))
+    check("health verdict is boolean and consistent",
+          h["healthy"] == (len(h["alerts"]) == 0))
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -1160,6 +1244,8 @@ def main():
     test_exploration(features)
     test_invention_grammar(features)
     test_paper_trader(features)
+    test_forward_feedback(features)
+    test_sentinel()
     test_diversity_invariants(features)
 
     with tempfile.TemporaryDirectory() as td:

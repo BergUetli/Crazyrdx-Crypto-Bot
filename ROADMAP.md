@@ -70,3 +70,17 @@ information-coefficient report over the collected funding/OI/positioning data
 missing PAPER-stage software (champions vs live quotes, own ledger), build
 before Chart D verdict so the 30-day paper clock can start instantly;
 (4) weekly Hermes digest. Recommendation on record: 1+2 first, then 3.
+
+## Research-informed upgrades (2026-09-02 literature pass)
+
+- **Quality-Diversity archive (MAP-Elites)**: replace/augment the champion
+  board with a behavioral grid (trade-frequency x hold-time x exposure
+  niches; one elite per cell). Our stratified exam slots + exploration tax
+  approximate QD; a formal archive is the principled version and is now the
+  standard in automated strategy discovery (incl. LLM-evolution systems like
+  MadEvolve/AlphaEvolve-style pipelines).
+- **CPCV (combinatorial purged cross-validation)** as a funnel gate: superior
+  overfitting rejection vs single OOS split per recent comparative studies;
+  moderate compute (engine is fast enough now).
+- Both deferred until the current PAPER cohort completes (~Oct 2) to keep
+  the measurement window clean.

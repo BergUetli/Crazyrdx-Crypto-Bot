@@ -2,6 +2,37 @@
 
 All notable changes to this project are documented here.
 
+## 2026-09-02 — Autopilot: forward-feedback goal-seeking + sentinel watchdog
+
+User directive: full autopilot, goal-seeking toward profit. Implemented the
+safe version — the search steers itself toward REAL forward profit while the
+measuring instruments stay outside the optimizer's reach:
+
+- **Forward-feedback allocator** (`evolution/forward_feedback.py`): each
+  cycle aggregates forward outcomes (vintage ledger + paper trades, the two
+  signals the search cannot game) into bounded tilts — logic sampling weights
+  and frontier indicator weights in [0.5, 2.0], per-family selection bonus
+  capped ±15 fitness points, Bayesian-shrunk so tiny samples can't dominate.
+  The engine loads them each cycle; the runner recomputes after ledger
+  scoring (FEEDBACK: log line). **Gates, costs, and verdict logic are never
+  touched — asserted by test.** Rationale: a reward function the optimizer
+  can edit gets Goodharted (see 2026-08 beta-mirage); allocation-only
+  adaptation against an external reward channel is the sound form of
+  self-modification.
+- **Sentinel watchdog** (`sim/sentinel.py`, LaunchAgent every 30min,
+  stdlib-only, depends on nothing it monitors): checks runner, candles,
+  derivatives, dashboard, paper trader, probe, disk; writes health.json;
+  posts macOS notifications on NEW alerts and on recovery. Response to
+  three silent failures in a month (DB corruption, dead Hermes cron, dead
+  data refresher — 8 days unnoticed).
+- **Paper trader hardening**: single-instance lock; atomic status writes.
+- Failure audit notes: user-domain LaunchAgents require login after boot —
+  enable macOS auto-login (or convert to LaunchDaemons) for full
+  unattended-reboot coverage; flagged to user (needs admin password).
+- Research mapping (MAP-Elites/QD, CPCV) added to ROADMAP.
+- Suite now 119 checks.
+
+
 ## 2026-09-01 — PAPER stage is live: shadow paper-trader + execution-reality probe
 
 The two gates between "interesting backtest" and any live-capital discussion:

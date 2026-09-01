@@ -353,6 +353,20 @@ def run_one_cycle(cycle: int, features: list) -> None:
         except Exception as e:
             print(f"  [vintage] ledger step failed: {e}")
 
+        # Autopilot: recompute forward-feedback allocation from the ledger +
+        # paper results (bounded tilts; next cycle's engine loads them)
+        try:
+            from evolution.forward_feedback import compute_and_write
+            fb = compute_and_write()
+            lw = fb.get("logic_weights") or {}
+            if lw:
+                top = sorted(lw.items(), key=lambda x: -x[1])[:3]
+                print("  FEEDBACK: logic tilts " +
+                      " ".join(f"{k}={v}" for k, v in top) +
+                      f" | families biased: {len(fb.get('family_bonus') or {})}")
+        except Exception as e:
+            print(f"  [feedback] failed: {e}")
+
         write_activity(
             {
                 "phase": "done",
