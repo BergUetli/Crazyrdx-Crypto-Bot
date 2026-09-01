@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## 2026-09-01 — PAPER stage is live: shadow paper-trader + execution-reality probe
+
+The two gates between "interesting backtest" and any live-capital discussion:
+
+- **`sim/paper_trader.py`** (LaunchAgent every 15min): enrolls champion
+  families as FROZEN copies (30-day term, max 8 concurrent, one virtual
+  $BOOK each), evaluates their signals on each new closed 1h bar, fills
+  entries at REAL Jupiter quotes (Binance-mid fallback, source recorded),
+  applies engine-consistent gap-aware exits, records trades/equity, and
+  grades against the PAPER bars (>=30d, >=20 trades, >=+5% net, DD<=20%).
+  Status published to sim/data/paper_status.json; new dashboard card
+  "Paper trading". NO orders are ever placed.
+- **`sim/layer1/execution_probe.py`** (LaunchAgent hourly): measures real
+  Jupiter executable prices for $125/$250 SOL/USDC both ways vs Binance
+  mid — the empirical cost curve vs the sim's assumptions. First live
+  reading: ~0.09bps/side quote cost (sim assumes 2.2bps + $0.03 + MEV;
+  quote != fill, so weeks of curve before recalibrating anything).
+- Suite now 108 checks (paper-trader lifecycle with stubbed quotes,
+  probe storage in prior section).
+- Roadmap: items 1 and 3 done; derivatives IC analyzer + weekly digest
+  remain parked.
+
+
 ## 2026-08-12 — Reboot-proofing, $500 book, invention grammar v1
 
 - **Reboot incident fixes**: strategy_log.db corrupted by a mid-write reboot

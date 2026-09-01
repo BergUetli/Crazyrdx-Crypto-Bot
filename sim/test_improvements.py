@@ -1064,6 +1064,71 @@ def test_invention_grammar(features):
     check("mutation keeps quantiles and k in bounds", ok)
 
 
+def test_paper_trader(features):
+    print("\n[20] shadow paper trader: enroll, trade, grade")
+    import tempfile as tf
+    import paper_trader as pt
+    import layer1.historical_feature_engine_1h as hfe
+    from evolution.genome import StrategyGenome
+
+    always_long = {
+        "entry_logic": "OR", "genome_id": "paper_test_alpha",
+        "entry_conditions": [{"indicator": "price_roc_1h", "operator": ">",
+                              "threshold": -1e9}],
+        "exit_rules": [{"exit_type": "profit_target", "value": 0.01},
+                       {"exit_type": "time_stop", "value": 5}],
+        "sizing_method": "fixed", "sizing_base": 0.3, "sizing_max": 0.5}
+    with tf.TemporaryDirectory() as td:
+        tmp = Path(td)
+        (tmp / "evolution").mkdir()
+        (tmp / "evolution" / "champions.json").write_text(json.dumps({
+            "champions": [
+                {"genome_id": "paper_test_alpha", "genome": always_long},
+                {"genome_id": "paper_test_beta", "genome": {
+                    **always_long, "genome_id": "paper_test_beta",
+                    "entry_logic": "AND"}},
+            ]}))
+        old_state = (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
+                     pt.live_price, hfe.get_historical_features_1h)
+        try:
+            pt.SIM = tmp
+            pt.DB_PAPER = tmp / "paper.db"
+            pt.STATUS_JSON = tmp / "status.json"
+            pt.live_price = lambda size, side: {
+                "price": 150.0 if side == "buy" else 151.0,
+                "source": "stub", "mid": 150.0}
+            hfe.get_historical_features_1h = lambda pair, **kw: features[:120]
+
+            conn = pt._conn()
+            n = pt.enroll_new(conn, verbose=False)
+            check("enrolled both champion families", n == 2)
+            check("re-enroll is idempotent", pt.enroll_new(conn, verbose=False) == 0)
+
+            stats = pt.process_bars(conn, verbose=False)
+            check(f"bars processed ({stats['bars']}), entries "
+                  f"({stats['entries']}), exits ({stats['exits']})",
+                  stats["bars"] > 50 and stats["entries"] >= 1
+                  and stats["exits"] >= 1)
+
+            payload = pt.grade_and_publish(conn)
+            e0 = payload["enrollments"][0]
+            check("grading fields present",
+                  e0["verdict"] == "RUNNING" and e0["trades"] >= 1
+                  and isinstance(e0["net_pnl"], float))
+            check("status json written for dashboard",
+                  (tmp / "status.json").exists())
+            neq = conn.execute("SELECT COUNT(*) FROM equity").fetchone()[0]
+            check(f"equity snapshots recorded ({neq})", neq > 50)
+
+            # No new bars -> no double processing
+            stats2 = pt.process_bars(conn, verbose=False)
+            check("idempotent on same bars", stats2["bars"] == 0)
+            conn.close()
+        finally:
+            (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
+             pt.live_price, hfe.get_historical_features_1h) = old_state
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -1085,6 +1150,7 @@ def main():
     test_derivatives_collector()
     test_exploration(features)
     test_invention_grammar(features)
+    test_paper_trader(features)
     test_diversity_invariants(features)
 
     with tempfile.TemporaryDirectory() as td:

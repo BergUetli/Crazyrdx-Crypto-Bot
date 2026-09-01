@@ -37,6 +37,7 @@ from success_criteria import (
 
 SIM = Path(__file__).resolve().parent
 LOGS = SIM / "logs"
+DATA = SIM / "data"
 EVO = SIM / "evolution"
 PORT = 8765
 
@@ -1525,6 +1526,36 @@ def explore_summary_card(s: dict) -> str:
   </div>"""
 
 
+def paper_trading_card(s: dict) -> str:
+    """Live-quote shadow trading status (the official PAPER stage)."""
+    try:
+        p = load_json(DATA / "paper_status.json") if (DATA / "paper_status.json").exists() else None
+    except Exception:
+        p = None
+    if not p or not p.get("enrollments"):
+        return ""
+    bars = p.get("bars") or {}
+    rows = "".join(
+        f"<tr><td><b>{e['logic']}</b></td><td class='muted'><code>{e['genome_id']}</code></td>"
+        f"<td>{e['days']:.0f}/{bars.get('min_days', 30)}</td><td>{e['trades']}</td>"
+        f"<td class='{'pos' if e['net_pnl'] >= 0 else 'neg'}'>{e['net_pnl']:+.2f}</td>"
+        f"<td>{e['max_dd_pct']:.1f}%</td>"
+        f"<td><span class='badge {'ok' if e['verdict'] == 'PASS' else ('bad' if e['verdict'] == 'FAIL' else 'warn')}'>{e['verdict']}</span></td></tr>"
+        for e in p["enrollments"]
+    )
+    return f"""
+  <div class="card">
+    <h2>Paper trading <span class="section-hint">frozen champions vs REAL Jupiter quotes — no money at risk</span></h2>
+    <p class="lead">Each champion trades a virtual ${p.get('book_usd', 0):.0f} book at live quoted prices for 30 days.
+       PASS needs &ge;{bars.get('min_trades', 20)} trades, &ge;+${bars.get('min_net_usd', 0):.0f} net, drawdown &le;{int((bars.get('max_dd', 0.2)) * 100)}%.
+       A PASS here is the agreed gate before any live-capital discussion.</p>
+    <table>
+      <tr><th>type</th><th>strategy</th><th>days</th><th>trades</th><th>net $</th><th>max DD</th><th>verdict</th></tr>
+      {rows}
+    </table>
+  </div>"""
+
+
 def html_page(s: dict) -> str:
     recent = s.get("recent") or []
     fit_vals = [sanitize_fitness(r.get("best_fitness") or 0) for r in recent]
@@ -1690,6 +1721,8 @@ def html_page(s: dict) -> str:
   </div>
 
   {explore_summary_card(s)}
+
+  {paper_trading_card(s)}
 
   {champions_html(s)}
 
