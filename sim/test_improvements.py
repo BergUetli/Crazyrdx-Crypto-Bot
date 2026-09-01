@@ -1222,6 +1222,84 @@ def test_sentinel():
           h["healthy"] == (len(h["alerts"]) == 0))
 
 
+def test_research_agent(features):
+    print("\n[23] research agent: untrusted-LLM validation + governance")
+    import research_agent as ra
+    good = {"entry_logic": "KOFN", "k_of_n": 2,
+            "entry_conditions": [
+                {"indicator": "funding_rate_roc", "operator": "<",
+                 "threshold": 0.0},
+                {"indicator": "taker_flow_imbalance", "operator": ">",
+                 "threshold": 0.6, "combine": "ratio",
+                 "indicator_b": "volatility_1d"}],
+            "exit_rules": [{"exit_type": "profit_target", "value": 0.02}],
+            "sizing_method": "fixed", "sizing_base": 0.3,
+            "rationale": "funding momentum + flow/vol composite"}
+    evil = [
+        {"entry_logic": "RANDOM", "entry_conditions": good["entry_conditions"],
+         "exit_rules": good["exit_rules"]},                     # banned logic
+        {"entry_logic": "AND", "entry_conditions": [
+            {"indicator": "__import__", "operator": ">", "threshold": 1}],
+         "exit_rules": good["exit_rules"]},                     # unknown ind
+        {"entry_logic": "AND", "entry_conditions": [
+            {"indicator": "close", "operator": "DROP TABLE", "threshold": 1}],
+         "exit_rules": good["exit_rules"]},                     # bad operator
+        {"entry_logic": "OR", "entry_conditions": [
+            {"indicator": "close", "operator": ">", "threshold": 1,
+             "combine": "ratio", "indicator_b": "close",
+             }] , "exit_rules": []},                            # no exits
+        "not even a dict",
+    ]
+    raw = json.dumps({"seeds": [good] + evil,
+                      "proposals": [{"title": "Add order-book depth feed",
+                                     "description": "needs new collector",
+                                     "rationale": "microstructure"},
+                                    {"junk": True}]})
+    seeds, proposals = ra.process_response("noise before {} after".replace(
+        "{}", raw))
+    check("exactly the one valid seed survives", len(seeds) == 1
+          and seeds[0]["entry_logic"] == "KOFN", str(len(seeds)))
+    check("malicious/invalid seeds all rejected", all(
+        s["entry_conditions"][0]["indicator"] != "__import__" for s in seeds))
+    check("valid proposal kept, junk dropped", len(proposals) == 1
+          and proposals[0]["title"].startswith("Add order-book"))
+
+    # Governance: proposals go to the human review file, seeds to the runner
+    import tempfile as tf
+    with tf.TemporaryDirectory() as td:
+        old_paths = (ra.SEEDS_JSON, ra.PROPOSALS_MD)
+        try:
+            ra.SEEDS_JSON = Path(td) / "seeds.json"
+            ra.PROPOSALS_MD = Path(td) / "proposals.md"
+            ra.publish(seeds, proposals)
+            check("seeds written for runner injection",
+                  json.loads(ra.SEEDS_JSON.read_text())["seeds"][0]
+                  ["genome_id"].startswith("research_"))
+            check("proposals routed to HUMAN REVIEW file",
+                  "NEEDS HUMAN REVIEW" in ra.PROPOSALS_MD.read_text())
+        finally:
+            ra.SEEDS_JSON, ra.PROPOSALS_MD = old_paths
+
+    # Runner integration: research seeds load as ordinary seeds (max 2)
+    import run_broad_evolution as rbe
+    with tf.TemporaryDirectory() as td:
+        # write into the real SIM/evolution? no — patch rbe.SIM
+        old_sim = rbe.SIM
+        try:
+            rbe.SIM = Path(td)
+            (Path(td) / "evolution").mkdir()
+            (Path(td) / "evolution" / "research_seeds.json").write_text(
+                json.dumps({"seeds": [dict(good, genome_id=f"research_x{i}")
+                                      for i in range(3)]}))
+            got = rbe.load_seed_genomes()
+            n_res = sum(1 for g in got
+                        if g.genome_id.startswith("research_"))
+            check("runner injects research seeds, capped at 2", n_res == 2,
+                  str(n_res))
+        finally:
+            rbe.SIM = old_sim
+
+
 def main():
     print("Building synthetic market data...")
     features = make_synthetic_features(1200)
@@ -1246,6 +1324,7 @@ def main():
     test_paper_trader(features)
     test_forward_feedback(features)
     test_sentinel()
+    test_research_agent(features)
     test_diversity_invariants(features)
 
     with tempfile.TemporaryDirectory() as td:

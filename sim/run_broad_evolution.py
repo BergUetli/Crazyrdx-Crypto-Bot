@@ -137,6 +137,14 @@ def load_seed_genomes(max_seeds: int = 5):
             seeds.append(StrategyGenome.from_dict(json.loads(best_path.read_text())))
         except Exception:
             pass
+    # Research-agent hypotheses enter as ordinary seeds (max 2) — they face
+    # the same exam/ledger/paper gauntlet as everything else, no shortcuts
+    try:
+        rs = json.loads((SIM / "evolution" / "research_seeds.json").read_text())
+        for s in (rs.get("seeds") or [])[:2]:
+            seeds.append(StrategyGenome.from_dict(s))
+    except Exception:
+        pass
     return seeds
 
 
