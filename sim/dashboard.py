@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import subprocess
+import threading
 import time
 import webbrowser
 from datetime import datetime
@@ -1866,6 +1868,25 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def _heartbeat_loop():
+    """Written every 30s so a post-mortem can pin the wedge onset to ±30s;
+    the sentinel's own grid is 30 minutes. Sentinel forensics copy this
+    file into each incident dir."""
+    hb = DATA / "dashboard_heartbeat.json"
+    while True:
+        try:
+            tmp = hb.with_suffix(".tmp")
+            tmp.write_text(json.dumps(
+                {"ts": time.time(),
+                 "iso": datetime.now().isoformat(timespec="seconds"),
+                 "pid": os.getpid(),
+                 "threads": threading.active_count()}))
+            tmp.replace(hb)
+        except Exception:
+            pass
+        time.sleep(30)
+
+
 def main():
     p = argparse.ArgumentParser(description="Trading bot dashboard")
     p.add_argument("--port", type=int, default=PORT)
@@ -1874,6 +1895,7 @@ def main():
     args = p.parse_args()
 
     host = "0.0.0.0" if args.lan else "127.0.0.1"
+    threading.Thread(target=_heartbeat_loop, daemon=True).start()
     httpd = ThreadingHTTPServer((host, args.port), Handler)
     url = f"http://{'127.0.0.1' if not args.lan else 'localhost'}:{args.port}"
     print(f"Dashboard: {url}")
