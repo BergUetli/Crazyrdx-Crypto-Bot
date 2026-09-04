@@ -23,6 +23,7 @@ evolution artifacts are never touched.
 
 import json
 import math
+import os
 import random
 import sqlite3
 import sys
@@ -1220,6 +1221,43 @@ def test_sentinel():
           len(h["alerts"]) + len(h["ok"]) == 7, str(h))
     check("health verdict is boolean and consistent",
           h["healthy"] == (len(h["alerts"]) == 0))
+
+    # Consecutive-failure counter: fix fires on check N, not before
+    s = {}
+    acts = [st.update_dash_state(s, True, 1000.0 + i) for i in range(3)]
+    check("no action before DASH_FAILS_TO_ACT failures",
+          acts[:2] == [False, False] and acts[2] is True, str(acts))
+    check("first-failure timestamp kept from the FIRST failure",
+          s.get("dash_first_fail_ts") == 1000.0, str(s))
+    st.update_dash_state(s, False, 2000.0)
+    check("success resets counter and timestamp",
+          s["dash_fails"] == 0 and "dash_first_fail_ts" not in s, str(s))
+    s2 = {}
+    st.update_dash_state(s2, True, 1.0)
+    st.update_dash_state(s2, False, 2.0)
+    acted = st.update_dash_state(s2, True, 3.0)
+    check("non-consecutive failures never trigger the fix",
+          acted is False and s2["dash_fails"] == 1, str(s2))
+
+    # Forensics + report land in an isolated tmp dir, never real state
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        inc = Path(td) / "incident_test"
+        st.capture_forensics([os.getpid()], inc, sample_secs=0)
+        have = {p.name for p in inc.iterdir()}
+        check("forensics capture ps/threads/lsof/system",
+              {f"ps_{os.getpid()}.txt", f"threads_{os.getpid()}.txt",
+               f"lsof_{os.getpid()}.txt", "system.txt"} <= have, str(have))
+        check("ps capture holds a live process state",
+              "STAT" in (inc / f"ps_{os.getpid()}.txt").read_text())
+        st.write_report(inc, 1000.0, {"123": "exited on SIGTERM"}, 42.0)
+        rep = (inc / "report.md").read_text()
+        check("incident report has timeline + RCA sections",
+              "## Timeline" in rep and "Root cause analysis" in rep
+              and "42.0s" in rep and "## RCA conclusion" in rep)
+        st.write_report(inc, None, {}, None)
+        check("failed recovery is loud in the report",
+              "NOT RECOVERED" in (inc / "report.md").read_text())
 
 
 def test_research_agent(features):
