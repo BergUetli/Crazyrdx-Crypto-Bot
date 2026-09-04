@@ -8,15 +8,23 @@ dependency-free check of every subsystem, run by launchd every 30 minutes.
 On a NEW problem it posts a macOS notification (and logs); on recovery it
 notifies once too. It depends on nothing it monitors.
 
-Dashboard auto-remediation (added 2026-09-04 after a 14h wedge the
-notify-only design left unfixed): after DASH_FAILS_TO_ACT consecutive
-failed dashboard checks the sentinel captures forensics (ps state, native
-stacks via `sample`, open files, system snapshot), THEN kills the wedged
-pid — launchd KeepAlive respawns it — and only then re-probes to verify
-recovery. Every action writes an incident report under
-sim/logs/incidents/ for root cause analysis. The dashboard is stateless
-and read-only, so an automatic restart cannot lose trading state; no
-other subsystem is auto-remediated.
+Dashboard auto-remediation (2026-09-04, after the 43h outage where a
+blind launchd respawn wedged again immediately): after DASH_FAILS_TO_ACT
+consecutive failed checks the sentinel
+  1. captures forensics (ps state, `sample` stacks, lsof, system, logs),
+  2. diagnoses the cause from those artifacts plus live probes,
+  3. BOOTS OUT the dashboard LaunchAgent — stopping the wedged pid AND
+     preventing launchd from respawning into a still-broken environment,
+  4. fixes what it safely can (stray port holders) and waits for the
+     preconditions the dashboard needs (disk space, responsive
+     filesystem, working pgrep, free port) to actually pass,
+  5. only then bootstraps the agent again and verifies HTTP recovery.
+If the preconditions cannot be met, the agent is LEFT STOPPED and every
+subsequent sentinel run re-probes and starts it the moment the
+environment is healthy — never a blind retry into a known-bad state.
+Every action writes sim/logs/incidents/<id>/report.md for RCA. The
+dashboard is stateless and read-only; no other subsystem is
+auto-remediated.
 """
 
 from __future__ import annotations
@@ -36,11 +44,15 @@ DATA = SIM / "data"
 HEALTH = DATA / "health.json"
 STATE = DATA / "sentinel_state.json"
 INCIDENTS = SIM / "logs" / "incidents"
+POP_DIR = SIM / "evolution" / "population"
 
 DASH_PORT = 8770
 DASH_URL = f"http://127.0.0.1:{DASH_PORT}/"
+DASH_LABEL = "com.crazyrdx.dashboard"
+DASH_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{DASH_LABEL}.plist"
 DASH_FAILS_TO_ACT = 3          # consecutive failed checks before the fix runs
 DASH_RECOVERY_WAIT_S = 150     # respawn + ~60s warm-up before first replies
+PRECONDITION_BUDGET_S = 90     # how long one run waits for blockers to clear
 
 
 def _age_h(ts_ms) -> float:
@@ -211,6 +223,123 @@ def capture_forensics(pids: list[int], inc_dir: Path,
             pass
 
 
+# ------------------------------------------------------------- diagnosis ---
+
+# Stack-frame markers -> cause label. Order matters: first match wins.
+STACK_MARKERS = [
+    ("NET_WRITE_HANG", ("sendall", "sosend", "soo_write", "__send",
+                        "tcp_output")),
+    ("SUBPROCESS_HANG", ("posix_spawn", "waitpid", "wait4",
+                         "check_output")),
+    ("DISK_IO_STALL", ("pread", "__read_nocancel", "getattrlist",
+                       "fstatat", "__open_nocancel", "readdir")),
+]
+
+
+def diagnose(inc_dir: Path) -> dict:
+    """Classify the wedge from captured artifacts. Honest output: a cause
+    list (may be UNKNOWN) plus the evidence lines that support it."""
+    causes: list[str] = []
+    evidence: list[str] = []
+    for f in sorted(inc_dir.glob("sample_*.txt")):
+        try:
+            text = f.read_text(errors="replace")
+        except Exception:
+            continue
+        for label, marks in STACK_MARKERS:
+            for m in marks:
+                if m in text and label not in causes:
+                    causes.append(label)
+                    line = next((ln.strip() for ln in text.splitlines()
+                                 if m in ln), m)
+                    evidence.append(f"{f.name}: {line[:160]}")
+    for f in sorted(inc_dir.glob("ps_*.txt")):
+        try:
+            text = f.read_text(errors="replace")
+        except Exception:
+            continue
+        for ln in text.splitlines():
+            cols = ln.split()
+            if len(cols) > 4 and cols[0].isdigit() and "U" in cols[4]:
+                evidence.append(f"{f.name}: state {cols[4]} "
+                                f"(uninterruptible kernel wait)")
+    return {"causes": causes or ["UNKNOWN"], "evidence": evidence[:20]}
+
+
+def preconditions() -> list[str]:
+    """Live probes of everything the dashboard needs to start and serve.
+    Empty list = environment healthy. Each blocker is a plain sentence."""
+    blockers: list[str] = []
+    try:
+        st = os.statvfs(str(SIM))
+        free_gb = st.f_bavail * st.f_frsize / 1e9
+        if free_gb < 5:
+            blockers.append(f"disk nearly full ({free_gb:.1f}GB free)")
+    except Exception as e:
+        blockers.append(f"disk probe failed: {e}")
+    # filesystem responsiveness on the exact files the dashboard reads
+    t0 = time.time()
+    try:
+        files = sorted(POP_DIR.glob("evolution_*.json"),
+                       key=lambda f: f.stat().st_mtime)[-3:]
+        for f in files:
+            json.loads(f.read_text())
+        if time.time() - t0 > 10:
+            blockers.append(f"filesystem slow: population read took "
+                            f"{time.time() - t0:.0f}s")
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        blockers.append(f"population dir unreadable: {e}")
+    try:
+        subprocess.run(["pgrep", "-f", "run_broad_evolution.py"],
+                       capture_output=True, timeout=5)
+    except Exception as e:
+        blockers.append(f"pgrep hangs (process table wedged?): {e}")
+    if dash_pids():
+        blockers.append(f"port {DASH_PORT} still held")
+    return blockers
+
+
+def fix_blockers(budget_s: int = PRECONDITION_BUDGET_S):
+    """Address causes before any restart: kill stray port holders, then
+    wait (bounded) for the environment probes to pass. Returns
+    (actions_taken, remaining_blockers)."""
+    actions: list[str] = []
+    deadline = time.time() + budget_s
+    while True:
+        blockers = preconditions()
+        stray = [b for b in blockers if "still held" in b]
+        if stray:
+            for pid in dash_pids():
+                actions.append(f"killed stray port holder {pid}: "
+                               f"{_kill(pid)}")
+            blockers = preconditions()
+        if not blockers or time.time() > deadline:
+            if not blockers and not actions:
+                actions.append("no fixable blockers found; environment "
+                               "probes all pass")
+            return actions, blockers
+        actions.append(f"waiting for blockers to clear: {blockers}")
+        time.sleep(10)
+
+
+# ----------------------------------------------------- agent start/stop ----
+
+def _launchctl(*args: str) -> str:
+    return _run(["launchctl", *args], 30)
+
+
+def stop_agent() -> str:
+    """bootout stops the wedged pid AND stops launchd's KeepAlive from
+    respawning into a still-broken environment — the Sep 2 failure."""
+    return _launchctl("bootout", f"gui/{os.getuid()}/{DASH_LABEL}")
+
+
+def start_agent() -> str:
+    return _launchctl("bootstrap", f"gui/{os.getuid()}", str(DASH_PLIST))
+
+
 def _kill(pid: int) -> str:
     try:
         os.kill(pid, signal.SIGTERM)
@@ -245,14 +374,32 @@ def _wait_recovery(wait_s: int = DASH_RECOVERY_WAIT_S):
     return None
 
 
+# --------------------------------------------------------------- report ----
+
 def write_report(inc_dir: Path, first_fail_ts, kill_results: dict,
-                 recovered_s, fails: int = DASH_FAILS_TO_ACT) -> None:
+                 recovered_s, fails: int = DASH_FAILS_TO_ACT,
+                 diag: dict | None = None,
+                 actions: list[str] | None = None,
+                 blockers: list[str] | None = None,
+                 agent_left_stopped: bool = False) -> None:
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     ff = (time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(first_fail_ts))
           if first_fail_ts else "unknown")
     ps_state = ""
     for f in sorted(inc_dir.glob("ps_*.txt")):
         ps_state += f"```\n{f.read_text()}```\n"
+    if agent_left_stopped:
+        recovery_line = ("- Recovery: dashboard LEFT STOPPED — blockers "
+                         "below were not fixable; sentinel re-probes every "
+                         "run and starts it once they clear")
+    elif recovered_s is not None:
+        recovery_line = f"- Recovery: HTTP 200 after {recovered_s}s"
+    else:
+        recovery_line = ("- Recovery: NOT RECOVERED within "
+                         f"{DASH_RECOVERY_WAIT_S}s despite healthy "
+                         "preconditions — next incident's forensics will "
+                         "capture the fresh process wedging")
+    d = diag or {"causes": ["(no diagnosis run)"], "evidence": []}
     lines = [
         f"# Dashboard incident {inc_dir.name}",
         "",
@@ -262,10 +409,16 @@ def write_report(inc_dir: Path, first_fail_ts, kill_results: dict,
         " (30 min apart)",
         f"- Auto-remediation ran: {now}",
         f"- Kill results: {json.dumps(kill_results)}",
-        f"- Recovery: " + (f"HTTP 200 after {recovered_s}s"
-                           if recovered_s is not None else
-                           "NOT RECOVERED within "
-                           f"{DASH_RECOVERY_WAIT_S}s — needs a human"),
+        recovery_line,
+        "",
+        "## Diagnosis (automated, from forensics + live probes)",
+        f"- Cause classification: {', '.join(d['causes'])}",
+        *[f"- Evidence: {e}" for e in d["evidence"]],
+        "",
+        "## Fixes applied before restart",
+        *[f"- {a}" for a in (actions or ["(none recorded)"])],
+        *([f"- REMAINING BLOCKERS: {b}" for b in blockers]
+          if blockers else []),
         "",
         "## Process state at capture (before kill)",
         ps_state or "(no ps capture)",
@@ -275,8 +428,8 @@ def write_report(inc_dir: Path, first_fail_ts, kill_results: dict,
         " names the kernel wait channel.",
         "- `sample_<pid>.txt`: native stack traces of every thread —"
         " the deepest frames show the exact call the process is stuck in.",
-        "- `lsof_<pid>.txt`: open files and sockets — look for the SQLite"
-        " db or socket matching the stuck stack frame.",
+        "- `lsof_<pid>.txt`: open files and sockets — look for the file"
+        " or socket matching the stuck stack frame.",
         "- `dashboard_heartbeat.json`: last moment the process was alive"
         " (written every 30s), pins the wedge onset far tighter than the"
         " 30-min sentinel grid.",
@@ -292,27 +445,64 @@ def write_report(inc_dir: Path, first_fail_ts, kill_results: dict,
         pass
 
 
-def remediate_dashboard(first_fail_ts) -> str:
-    """Fix first, verify after: forensics -> kill -> (launchd respawns)
-    -> recovery probe. Never re-probes the dashboard before acting."""
+# ---------------------------------------------------------- remediation ----
+
+def remediate_dashboard(first_fail_ts, state: dict) -> str:
+    """Fix the cause first, retry only after it is fixed:
+    forensics -> diagnose -> stop agent (no blind respawn) -> fix/verify
+    preconditions -> start agent -> verify recovery. If preconditions
+    stay broken the agent is left stopped and escalated, never
+    restart-looped into a known-bad environment."""
     inc_dir = INCIDENTS / f"incident_{time.strftime('%Y%m%d_%H%M%S')}"
     pids = dash_pids()
     capture_forensics(pids, inc_dir)
+    diag = diagnose(inc_dir)
+    stop_agent()
     kill_results = {str(p): _kill(p) for p in pids} or \
-        {"none": "no dashboard pid found — launchd may already be cycling"}
+        {"none": "no dashboard pid found"}
+    actions, blockers = fix_blockers()
+    if blockers:
+        state["dash_agent_stopped"] = True
+        write_report(inc_dir, first_fail_ts, kill_results, None,
+                     diag=diag, actions=actions, blockers=blockers,
+                     agent_left_stopped=True)
+        notify("Trading bot: dashboard STOPPED, needs you",
+               f"cause {','.join(diag['causes'])}; unfixable: "
+               f"{'; '.join(blockers)[:100]} — see {inc_dir.name}")
+        return (f"INCIDENT dashboard stopped, blockers unfixed -> "
+                f"{inc_dir.name}")
+    start_agent()
     recovered_s = _wait_recovery()
-    write_report(inc_dir, first_fail_ts, kill_results, recovered_s)
+    write_report(inc_dir, first_fail_ts, kill_results, recovered_s,
+                 diag=diag, actions=actions)
     if recovered_s is not None:
-        notify("Trading bot: dashboard restarted",
-               f"wedged {DASH_FAILS_TO_ACT} checks; auto-restarted, "
-               f"back in {recovered_s}s. Forensics: {inc_dir.name}")
+        notify("Trading bot: dashboard fixed + restarted",
+               f"cause {','.join(diag['causes'])}; back in "
+               f"{recovered_s}s. Forensics: {inc_dir.name}")
         verdict = f"recovered in {recovered_s}s"
     else:
-        notify("Trading bot: dashboard NOT recovered",
-               f"auto-restart failed to bring :{DASH_PORT} back — "
+        notify("Trading bot: dashboard restarted but NOT serving",
+               f"env was healthy yet :{DASH_PORT} silent — "
                f"see {inc_dir.name}")
         verdict = "NOT RECOVERED"
-    return f"INCIDENT dashboard auto-restart -> {inc_dir.name} ({verdict})"
+    return f"INCIDENT dashboard auto-remediation -> {inc_dir.name} ({verdict})"
+
+
+def try_resume_stopped_agent(state: dict) -> str | None:
+    """A previous run left the agent stopped over unfixable blockers.
+    Re-probe; start it only once the environment is actually healthy."""
+    blockers = preconditions()
+    blockers = [b for b in blockers if "still held" not in b]
+    if blockers:
+        return f"dashboard still stopped, blockers: {'; '.join(blockers)}"
+    start_agent()
+    recovered_s = _wait_recovery()
+    state.pop("dash_agent_stopped", None)
+    if recovered_s is not None:
+        notify("Trading bot: dashboard back",
+               f"blockers cleared, restarted, serving in {recovered_s}s")
+        return f"dashboard resumed after blockers cleared ({recovered_s}s)"
+    return "dashboard agent restarted after blockers cleared, not yet serving"
 
 
 # ----------------------------------------------------------------- main ----
@@ -334,9 +524,16 @@ def main() -> int:
     incident_line = None
     state = load_state()
     dash_down = any(a.startswith("dashboard:") for a in h["alerts"])
-    if update_dash_state(state, dash_down, h["ts"]):
+    if state.get("dash_agent_stopped"):
+        if dash_down:
+            incident_line = try_resume_stopped_agent(state)
+        else:
+            state.pop("dash_agent_stopped", None)
+        state["dash_fails"] = 0
+        state.pop("dash_first_fail_ts", None)
+    elif update_dash_state(state, dash_down, h["ts"]):
         first_fail = state.get("dash_first_fail_ts")
-        incident_line = remediate_dashboard(first_fail)
+        incident_line = remediate_dashboard(first_fail, state)
         state["dash_fails"] = 0
         state.pop("dash_first_fail_ts", None)
         state["last_incident"] = incident_line
