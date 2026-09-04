@@ -1,6 +1,6 @@
 {
-  "updated_ts": 1788519502.816267,
-  "n": 4243,
+  "updated_ts": 1788524016.0895202,
+  "n": 4258,
   "entries": {
     "TFT::lower_wick_pct|<|b6": {
       "key": "TFT::lower_wick_pct|<|b6",
@@ -144775,6 +144775,483 @@
       "last_reason": "walk_forward",
       "last_meta": {
         "genome_id": "mut_clone_clone_clone_clone_cross_cross_cl_clone_mu_2279_6578_3536_8863_7476_6745"
+      }
+    },
+    "AND::hl_range_pct|<=|b6+momentum_divergence_4h_1d|>|b0+volatility_regime_1h_4h|<=|b7": {
+      "key": "AND::hl_range_pct|<=|b6+momentum_divergence_4h_1d|>|b0+volatility_regime_1h_4h|<=|b7",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1788521077.832489,
+      "last_ts": 1788521077.832493,
+      "example_id": "frontier_gen_12_253580",
+      "logic": "AND",
+      "conditions": [
+        {
+          "indicator": "volatility_regime_1h_4h",
+          "operator": "<=",
+          "threshold": 3.617740767730521,
+          "bin": 7
+        },
+        {
+          "indicator": "hl_range_pct",
+          "operator": "<=",
+          "threshold": 174.11225073290842,
+          "bin": 6
+        },
+        {
+          "indicator": "momentum_divergence_4h_1d",
+          "operator": ">",
+          "threshold": -130.44364495582656,
+          "bin": 0
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "frontier_gen_12_253580"
+      }
+    },
+    "TREND::market_stress_index|<|b1+price_vs_4h_sma|>|b7+taker_buy_sma_ratio|>=|b2": {
+      "key": "TREND::market_stress_index|<|b1+price_vs_4h_sma|>|b7+taker_buy_sma_ratio|>=|b2",
+      "strikes": 1,
+      "reasons": {
+        "walk_forward": 1
+      },
+      "first_ts": 1788521080.198163,
+      "last_ts": 1788521080.198165,
+      "example_id": "cross_clone_mu_mut_cros_3355",
+      "logic": "TREND",
+      "conditions": [
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": ">=",
+          "threshold": 1.1737480159133007,
+          "bin": 2
+        },
+        {
+          "indicator": "price_vs_4h_sma",
+          "operator": ">",
+          "threshold": 304.1994809486805,
+          "bin": 7
+        },
+        {
+          "indicator": "market_stress_index",
+          "operator": "<",
+          "threshold": 0.1411740682942387,
+          "bin": 1
+        }
+      ],
+      "last_reason": "walk_forward",
+      "last_meta": {
+        "genome_id": "cross_clone_mu_mut_cros_3355"
+      }
+    },
+    "OR::momentum_divergence_4h_1d|>|b0+volatility_regime_1h_4h|<=|b7": {
+      "key": "OR::momentum_divergence_4h_1d|>|b0+volatility_regime_1h_4h|<=|b7",
+      "strikes": 1,
+      "reasons": {
+        "benchmark": 1
+      },
+      "first_ts": 1788521081.1623092,
+      "last_ts": 1788521081.162312,
+      "example_id": "mut_cross_clone_cl_mut_cros_1216_3629",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "volatility_regime_1h_4h",
+          "operator": "<=",
+          "threshold": 3.617740767730521,
+          "bin": 7
+        },
+        {
+          "indicator": "momentum_divergence_4h_1d",
+          "operator": ">",
+          "threshold": -119.79839803270103,
+          "bin": 0
+        }
+      ],
+      "last_reason": "benchmark",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cl_mut_cros_1216_3629"
+      }
+    },
+    "BREAKOUT::price_vs_4h_sma|<|b3+volume_weighted_price|<=|b0": {
+      "key": "BREAKOUT::price_vs_4h_sma|<|b3+volume_weighted_price|<=|b0",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1788521084.798625,
+      "last_ts": 1788521084.798628,
+      "example_id": "mut_clone_mut_cross_cross_cr_clone_cr_4032_5991_1720_1505",
+      "logic": "BREAKOUT",
+      "conditions": [
+        {
+          "indicator": "price_vs_4h_sma",
+          "operator": "<",
+          "threshold": 1.2579979115893138,
+          "bin": 3
+        },
+        {
+          "indicator": "volume_weighted_price",
+          "operator": "<=",
+          "threshold": 70.57831499850577,
+          "bin": 0
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "mut_clone_mut_cross_cross_cr_clone_cr_4032_5991_1720_1505"
+      }
+    },
+    "KOFN::close_lag_2|>=|b2+hl_range_pct|<=|b6+volatility_regime_1h_4h|<=|b7": {
+      "key": "KOFN::close_lag_2|>=|b2+hl_range_pct|<=|b6+volatility_regime_1h_4h|<=|b7",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1788521085.3370292,
+      "last_ts": 1788521085.3370318,
+      "example_id": "cross_clone_cl_mut_clon_3998",
+      "logic": "KOFN",
+      "conditions": [
+        {
+          "indicator": "volatility_regime_1h_4h",
+          "operator": "<=",
+          "threshold": 3.617740767730521,
+          "bin": 7
+        },
+        {
+          "indicator": "close_lag_2",
+          "operator": ">=",
+          "threshold": 77.46450776653222,
+          "bin": 2
+        },
+        {
+          "indicator": "hl_range_pct",
+          "operator": "<=",
+          "threshold": 174.11225073290842,
+          "bin": 6
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "cross_clone_cl_mut_clon_3998"
+      }
+    },
+    "TREND::funding_rate_roc|<=|b5+taker_buy_sma_ratio|<=|b2+taker_flow_imbalance|>=|b2": {
+      "key": "TREND::funding_rate_roc|<=|b5+taker_buy_sma_ratio|<=|b2+taker_flow_imbalance|>=|b2",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1788522612.150794,
+      "last_ts": 1788522612.150799,
+      "example_id": "clone_clone_mut_clone_cross_cross_mu_cross_mu_4227_7276_4651_1381_6623",
+      "logic": "TREND",
+      "conditions": [
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": "<=",
+          "threshold": 0.9943277526546842,
+          "bin": 2
+        },
+        {
+          "indicator": "taker_flow_imbalance",
+          "operator": ">=",
+          "threshold": -0.13964150209023973,
+          "bin": 2
+        },
+        {
+          "indicator": "funding_rate_roc",
+          "operator": "<=",
+          "threshold": 6.276974180456548e-05,
+          "bin": 5
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "clone_clone_mut_clone_cross_cross_mu_cross_mu_4227_7276_4651_1381_6623"
+      }
+    },
+    "OR::cex_dex_basis_roc_4h|<|b3+volume_roc_4h|>|b2": {
+      "key": "OR::cex_dex_basis_roc_4h|<|b3+volume_roc_4h|>|b2",
+      "strikes": 1,
+      "reasons": {
+        "walk_forward": 1
+      },
+      "first_ts": 1788522614.586424,
+      "last_ts": 1788522614.586427,
+      "example_id": "gen_15_222759",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "cex_dex_basis_roc_4h",
+          "operator": "<",
+          "threshold": -12.258075890254098,
+          "bin": 3
+        },
+        {
+          "indicator": "volume_roc_4h",
+          "operator": ">",
+          "threshold": 0.6393509361083943,
+          "bin": 2
+        }
+      ],
+      "last_reason": "walk_forward",
+      "last_meta": {
+        "genome_id": "gen_15_222759"
+      }
+    },
+    "BREAKOUT::funding_rate_roc|>|b7+volume_weighted_price|>|b5": {
+      "key": "BREAKOUT::funding_rate_roc|>|b7+volume_weighted_price|>|b5",
+      "strikes": 1,
+      "reasons": {
+        "benchmark": 1
+      },
+      "first_ts": 1788522615.482475,
+      "last_ts": 1788522615.482477,
+      "example_id": "gen_15_490735",
+      "logic": "BREAKOUT",
+      "conditions": [
+        {
+          "indicator": "funding_rate_roc",
+          "operator": ">",
+          "threshold": 0.8562182582960379,
+          "bin": 7
+        },
+        {
+          "indicator": "volume_weighted_price",
+          "operator": ">",
+          "threshold": 91.14776027872934,
+          "bin": 5
+        }
+      ],
+      "last_reason": "benchmark",
+      "last_meta": {
+        "genome_id": "gen_15_490735"
+      }
+    },
+    "KOFN::sol_btc_ratio_roc_4h|<|b6+taker_buy_roc_1d|>|b4+taker_buy_sma_ratio|<=|b1": {
+      "key": "KOFN::sol_btc_ratio_roc_4h|<|b6+taker_buy_roc_1d|>|b4+taker_buy_sma_ratio|<=|b1",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1788522616.020087,
+      "last_ts": 1788522616.0200891,
+      "example_id": "mut_cross_cross_cr_clone_cr_7464_9735",
+      "logic": "KOFN",
+      "conditions": [
+        {
+          "indicator": "sol_btc_ratio_roc_4h",
+          "operator": "<",
+          "threshold": 66.16114043881464,
+          "bin": 6
+        },
+        {
+          "indicator": "taker_buy_sma_ratio",
+          "operator": "<=",
+          "threshold": 0.7515172281250695,
+          "bin": 1
+        },
+        {
+          "indicator": "taker_buy_roc_1d",
+          "operator": ">",
+          "threshold": 2.785864821750303,
+          "bin": 4
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "mut_cross_cross_cr_clone_cr_7464_9735"
+      }
+    },
+    "MEANREV::autocorrelation_1d|>|b5": {
+      "key": "MEANREV::autocorrelation_1d|>|b5",
+      "strikes": 1,
+      "reasons": {
+        "feasibility": 1
+      },
+      "first_ts": 1788522616.51686,
+      "last_ts": 1788522616.516862,
+      "example_id": "mut_cross_clone_cl_cross_cr_5725_6239",
+      "logic": "MEANREV",
+      "conditions": [
+        {
+          "indicator": "autocorrelation_1d",
+          "operator": ">",
+          "threshold": 0.07811278953096856,
+          "bin": 5
+        }
+      ],
+      "last_reason": "feasibility",
+      "last_meta": {
+        "genome_id": "mut_cross_clone_cl_cross_cr_5725_6239"
+      }
+    },
+    "OR::hl_range_avg_1d|<=|b0+market_stress_index|>|b5+market_stress_index|>=|b6+returns_lag_1|<|b7": {
+      "key": "OR::hl_range_avg_1d|<=|b0+market_stress_index|>|b5+market_stress_index|>=|b6+returns_lag_1|<|b7",
+      "strikes": 1,
+      "reasons": {
+        "walk_forward": 1
+      },
+      "first_ts": 1788524008.116041,
+      "last_ts": 1788524008.116045,
+      "example_id": "mut_clone_clone_cross_clone_cl_clone_cl_9271_9677_6243_4453",
+      "logic": "OR",
+      "conditions": [
+        {
+          "indicator": "market_stress_index",
+          "operator": ">",
+          "threshold": 0.31720072006108935,
+          "bin": 5
+        },
+        {
+          "indicator": "returns_lag_1",
+          "operator": "<",
+          "threshold": 0.00909666396011685,
+          "bin": 7
+        },
+        {
+          "indicator": "hl_range_avg_1d",
+          "operator": "<=",
+          "threshold": 0.6619725692342271,
+          "bin": 0
+        },
+        {
+          "indicator": "market_stress_index",
+          "operator": ">=",
+          "threshold": 0.38388593123036424,
+          "bin": 6
+        }
+      ],
+      "last_reason": "walk_forward",
+      "last_meta": {
+        "genome_id": "mut_clone_clone_cross_clone_cl_clone_cl_9271_9677_6243_4453"
+      }
+    },
+    "KOFN::market_stress_index|>=|b4+market_stress_index|>=|b5+sma_20|>|b0": {
+      "key": "KOFN::market_stress_index|>=|b4+market_stress_index|>=|b5+sma_20|>|b0",
+      "strikes": 1,
+      "reasons": {
+        "walk_forward": 1
+      },
+      "first_ts": 1788524009.400722,
+      "last_ts": 1788524009.400724,
+      "example_id": "clone_mut_cross_clone_cl_cross_cl_2643_2182_2371",
+      "logic": "KOFN",
+      "conditions": [
+        {
+          "indicator": "market_stress_index",
+          "operator": ">=",
+          "threshold": 0.3311496295512378,
+          "bin": 5
+        },
+        {
+          "indicator": "market_stress_index",
+          "operator": ">=",
+          "threshold": 0.28798523635696005,
+          "bin": 4
+        },
+        {
+          "indicator": "sma_20",
+          "operator": ">",
+          "threshold": 0.8744896572715929,
+          "bin": 0
+        }
+      ],
+      "last_reason": "walk_forward",
+      "last_meta": {
+        "genome_id": "clone_mut_cross_clone_cl_cross_cl_2643_2182_2371"
+      }
+    },
+    "TFT::hl_range_avg_1d|>|b0+market_stress_index|>=|b5": {
+      "key": "TFT::hl_range_avg_1d|>|b0+market_stress_index|>=|b5",
+      "strikes": 1,
+      "reasons": {
+        "walk_forward": 1
+      },
+      "first_ts": 1788524011.713459,
+      "last_ts": 1788524011.713461,
+      "example_id": "clone_cross_clone_cr_clone_cr_3438_6699",
+      "logic": "TFT",
+      "conditions": [
+        {
+          "indicator": "hl_range_avg_1d",
+          "operator": ">",
+          "threshold": 0.6619725692342271,
+          "bin": 0
+        },
+        {
+          "indicator": "market_stress_index",
+          "operator": ">=",
+          "threshold": 0.3311496295512378,
+          "bin": 5
+        }
+      ],
+      "last_reason": "walk_forward",
+      "last_meta": {
+        "genome_id": "clone_cross_clone_cr_clone_cr_3438_6699"
+      }
+    },
+    "TREND::returns_lag_1|<|b7+sma_20|>|b0+sma_cross_5_20|>=|b6": {
+      "key": "TREND::returns_lag_1|<|b7+sma_20|>|b0+sma_cross_5_20|>=|b6",
+      "strikes": 1,
+      "reasons": {
+        "fee_stress": 1
+      },
+      "first_ts": 1788524015.21119,
+      "last_ts": 1788524015.211193,
+      "example_id": "clone_cross_clone_cl_cross_mu_1747_3980",
+      "logic": "TREND",
+      "conditions": [
+        {
+          "indicator": "sma_20",
+          "operator": ">",
+          "threshold": 0.8744896572715929,
+          "bin": 0
+        },
+        {
+          "indicator": "sma_cross_5_20",
+          "operator": ">=",
+          "threshold": 0.7323038531063122,
+          "bin": 6
+        },
+        {
+          "indicator": "returns_lag_1",
+          "operator": "<",
+          "threshold": 0.00909666396011685,
+          "bin": 7
+        }
+      ],
+      "last_reason": "fee_stress",
+      "last_meta": {
+        "genome_id": "clone_cross_clone_cl_cross_mu_1747_3980"
+      }
+    },
+    "BREAKOUT::sma_20|>|b0": {
+      "key": "BREAKOUT::sma_20|>|b0",
+      "strikes": 1,
+      "reasons": {
+        "benchmark": 1
+      },
+      "first_ts": 1788524016.089505,
+      "last_ts": 1788524016.089507,
+      "example_id": "cross_mut_clon_clone_cl_8218",
+      "logic": "BREAKOUT",
+      "conditions": [
+        {
+          "indicator": "sma_20",
+          "operator": ">",
+          "threshold": 0.8744896572715929,
+          "bin": 0
+        }
+      ],
+      "last_reason": "benchmark",
+      "last_meta": {
+        "genome_id": "cross_mut_clon_clone_cl_8218"
       }
     }
   }

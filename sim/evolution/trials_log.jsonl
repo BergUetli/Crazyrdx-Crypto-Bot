@@ -9959,3 +9959,6 @@
 {"ts": 1788516503.718234, "n_trials": 2400, "meta": {"cycle": 109, "generations": 15, "pop": 150, "best_fitness": 53.93523061714475, "best_id": "cross_clone_cl_clone_cl_1655"}}
 {"ts": 1788517913.67809, "n_trials": 2850, "meta": {"cycle": 110, "generations": 18, "pop": 150, "best_fitness": 48.97273984965241, "best_id": "mut_clone_clone_clone_mut_clone_cross_clone_mu_mut_clon_3882_3420_4067_5906_9012_6527_7672"}}
 {"ts": 1788519492.102411, "n_trials": 2400, "meta": {"cycle": 111, "generations": 15, "pop": 150, "best_fitness": 39.01918266995384, "best_id": "cross_cross_cl_clone_mu_2279"}}
+{"ts": 1788521076.80689, "n_trials": 2400, "meta": {"cycle": 112, "generations": 15, "pop": 150, "best_fitness": 40.331901040634996, "best_id": "frontier_gen_12_253580"}}
+{"ts": 1788522607.95066, "n_trials": 2400, "meta": {"cycle": 113, "generations": 15, "pop": 150, "best_fitness": 37.15613981213249, "best_id": "clone_clone_mut_clone_cross_cross_mu_cross_mu_4227_7276_4651_1381_6623"}}
+{"ts": 1788524005.266161, "n_trials": 2850, "meta": {"cycle": 114, "generations": 18, "pop": 150, "best_fitness": 44.38173638303913, "best_id": "mut_clone_clone_cross_clone_cl_clone_cl_9271_9677_6243_4453"}}

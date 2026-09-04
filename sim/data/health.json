@@ -1,5 +1,5 @@
 {
-  "ts": 1788519231.522499,
+  "ts": 1788522844.321555,
   "healthy": false,
   "alerts": [
     "dashboard: dashboard down on :8770 [check error: timed out]"
