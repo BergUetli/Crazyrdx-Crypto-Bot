@@ -1259,6 +1259,39 @@ def test_sentinel():
         check("failed recovery is loud in the report",
               "NOT RECOVERED" in (inc / "report.md").read_text())
 
+        # Diagnosis: classify the wedge from a synthetic stack sample
+        (inc / "sample_999.txt").write_text(
+            "Call graph:\n  thread 1:\n    __sendall -> sosend blocked\n")
+        d = st.diagnose(inc)
+        check("net-write hang classified from stack markers",
+              "NET_WRITE_HANG" in d["causes"], str(d))
+        check("diagnosis carries the evidence line",
+              any("sample_999" in e for e in d["evidence"]), str(d))
+        (inc / "sample_999.txt").write_text("nothing recognizable here")
+        d2 = st.diagnose(inc)
+        check("unrecognized stacks stay honestly UNKNOWN",
+              d2["causes"] == ["UNKNOWN"], str(d2))
+
+        # Report shows diagnosis, fixes, and the left-stopped escalation
+        st.write_report(inc, 1000.0, {"1": "exited on SIGTERM"}, None,
+                        diag={"causes": ["DISK_IO_STALL"],
+                              "evidence": ["ps_1.txt: state U"]},
+                        actions=["waited for filesystem"],
+                        blockers=["disk nearly full (1.2GB free)"],
+                        agent_left_stopped=True)
+        rep2 = (inc / "report.md").read_text()
+        check("report records diagnosis + fixes + blockers + stopped",
+              "DISK_IO_STALL" in rep2 and "waited for filesystem" in rep2
+              and "REMAINING BLOCKERS" in rep2 and "LEFT STOPPED" in rep2)
+
+    # Precondition probes pass on a healthy machine and are cheap
+    t0 = time.time()
+    blockers = st.preconditions()
+    blockers = [b for b in blockers if "still held" not in b]
+    check("preconditions pass on healthy env (fix-first gate is usable)",
+          blockers == [], str(blockers))
+    check("precondition probes finish quickly", time.time() - t0 < 20)
+
 
 def test_research_agent(features):
     print("\n[23] research agent: untrusted-LLM validation + governance")
