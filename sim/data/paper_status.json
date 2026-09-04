@@ -1,0 +1,100 @@
+{
+  "updated_ts": 1788519140.9420931,
+  "book_usd": 500.0,
+  "bars": {
+    "min_days": 30,
+    "min_trades": 20,
+    "min_net_usd": 25.0,
+    "max_dd": 0.2
+  },
+  "enrollments": [
+    {
+      "id": 1,
+      "genome_id": "clone_clone_clone_clone_clone_",
+      "logic": "OR",
+      "days": 2.5,
+      "trades": 0,
+      "net_pnl": 0.0,
+      "max_dd_pct": 0.9,
+      "verdict": "RUNNING",
+      "status": "active"
+    },
+    {
+      "id": 2,
+      "genome_id": "clone_clone_clone_mut_clone_cl",
+      "logic": "OR",
+      "days": 2.5,
+      "trades": 1,
+      "net_pnl": 8.63,
+      "max_dd_pct": 1.1,
+      "verdict": "RUNNING",
+      "status": "active"
+    },
+    {
+      "id": 3,
+      "genome_id": "clone_clone_clone_clone_clone_",
+      "logic": "KOFN",
+      "days": 2.5,
+      "trades": 0,
+      "net_pnl": 0.0,
+      "max_dd_pct": 0.9,
+      "verdict": "RUNNING",
+      "status": "active"
+    },
+    {
+      "id": 4,
+      "genome_id": "clone_clone_mut_seed_mut_clone",
+      "logic": "KOFN",
+      "days": 2.5,
+      "trades": 0,
+      "net_pnl": 0.0,
+      "max_dd_pct": 0.9,
+      "verdict": "RUNNING",
+      "status": "active"
+    },
+    {
+      "id": 5,
+      "genome_id": "mut_clone_mut_clone_mut_clone_",
+      "logic": "MEANREV",
+      "days": 2.5,
+      "trades": 3,
+      "net_pnl": 0.77,
+      "max_dd_pct": 1.2,
+      "verdict": "RUNNING",
+      "status": "active"
+    },
+    {
+      "id": 6,
+      "genome_id": "mut_clone_mut_cross_clone_cl_c",
+      "logic": "MEANREV",
+      "days": 2.5,
+      "trades": 3,
+      "net_pnl": 0.99,
+      "max_dd_pct": 1.2,
+      "verdict": "RUNNING",
+      "status": "active"
+    },
+    {
+      "id": 7,
+      "genome_id": "mut_clone_clone_mut_clone_clon",
+      "logic": "TREND",
+      "days": 2.5,
+      "trades": 1,
+      "net_pnl": 1.87,
+      "max_dd_pct": 1.2,
+      "verdict": "RUNNING",
+      "status": "active"
+    },
+    {
+      "id": 8,
+      "genome_id": "mut_clone_clone_clone_clone_cr",
+      "logic": "AND",
+      "days": 2.5,
+      "trades": 3,
+      "net_pnl": -0.45,
+      "max_dd_pct": 1.1,
+      "verdict": "RUNNING",
+      "status": "active"
+    }
+  ]
+}

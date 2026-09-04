@@ -1,0 +1,15 @@
+{
+  "ts": 1788519231.522499,
+  "healthy": false,
+  "alerts": [
+    "dashboard: dashboard down on :8770 [check error: timed out]"
+  ],
+  "ok": [
+    "runner (pid ok)",
+    "candles (1.9h old)",
+    "derivatives (0.9h old)",
+    "paper (updated 0.0h ago)",
+    "probe (0.0h old)",
+    "disk (63GB free)"
+  ]
+}
