@@ -141,6 +141,9 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
         if n_active + added >= MAX_CONCURRENT:
             break
         g = c.get("genome") or {}
+        from success_criteria import has_protective_exit
+        if not has_protective_exit(g):
+            continue  # user-approved rule: no protection, no paper slot
         fam = family_key(g.get("entry_logic") or "?", [
             x.get("indicator") for x in g.get("entry_conditions", [])])
         try:
@@ -300,20 +303,25 @@ def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
             peak = max(peak, v)
             dd = max(dd, (peak - v) / peak)
         n_tr, net = int(trades[0]), float(trades[1])
+        from success_criteria import has_protective_exit
+        gdict = json.loads(gjson) or {}
+        protected = has_protective_exit(gdict)
         verdict = "RUNNING"
         if days >= PAPER_MIN_DAYS:
             passed = (n_tr >= PAPER_MIN_TRADES
                       and net >= PAPER_MIN_NET_PNL_USD
-                      and dd <= PAPER_MAX_DRAWDOWN_HARD)
+                      and dd <= PAPER_MAX_DRAWDOWN_HARD
+                      and protected)
             verdict = "PASS" if passed else "FAIL"
             if status == "active" and days >= TERM_DAYS:
                 conn.execute("UPDATE enrollments SET status=? WHERE id=?",
                              (f"completed_{verdict.lower()}", eid))
-        logic = (json.loads(gjson) or {}).get("entry_logic", "?")
+        logic = gdict.get("entry_logic", "?")
         out.append({"id": eid, "genome_id": (gid or "")[:30], "logic": logic,
                     "days": round(days, 1), "trades": n_tr,
                     "net_pnl": round(net, 2), "max_dd_pct": round(dd * 100, 1),
-                    "verdict": verdict, "status": status})
+                    "verdict": verdict, "status": status,
+                    "protected": protected})
     conn.commit()
     payload = {
         "updated_ts": now, "book_usd": BOOK_USD,

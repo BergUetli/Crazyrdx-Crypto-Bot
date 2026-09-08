@@ -299,6 +299,17 @@ class PromotionFunnel:
         except Exception:
             pass
 
+        # Gate 0b: protection — a promotable strategy must carry a stop
+        # loss or trailing stop (user-approved gate, 2026-09-09). Failures
+        # are NOT kill-archived: the same entry family with a protective
+        # exit added remains fair game.
+        from success_criteria import has_protective_exit
+        if not has_protective_exit(genome):
+            gates["protection"] = {"passed": False,
+                                   "reason": "no stop_loss/trailing_stop"}
+            return self._fail(name, genome, gates, "protection",
+                              record_kill=False)
+
         # Gate 0: lottery ban
         if genome.entry_logic == "RANDOM":
             return self._fail(name, genome, {"lottery_ban": {"passed": False}}, "RANDOM banned")
@@ -956,8 +967,12 @@ def funnel_population_top(
     skipped_tabu = 0
     skipped_champion = 0
 
+    from success_criteria import has_protective_exit
+
     def _eligible(g: StrategyGenome) -> bool:
         nonlocal skipped_tabu, skipped_champion
+        if not has_protective_exit(g):
+            return False  # exam slots go to qualifying candidates only
         sig = _genome_signature(g)
         if sig in seen_exact:
             return False

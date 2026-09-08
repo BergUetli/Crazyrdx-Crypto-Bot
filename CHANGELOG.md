@@ -2,6 +2,40 @@
 
 All notable changes to this project are documented here.
 
+## 2026-09-09 — Protection gate: no stop loss, no promotion (user-approved)
+
+Winner analysis at paper day 7 found the four top-earning paper books carry
+ONLY a `time_stop 46` exit — no stop loss, no trailing stop. Roughly half
+their profit was market drift; in a crash they ride positions down for up to
+46 hours. User approved two decisions: (1) PAPER and LIVE qualification now
+requires a protective exit (stop_loss or trailing_stop); (2) the 20-trade
+PAPER minimum stays.
+
+- **`success_criteria.py`**: `PAPER_REQUIRE_PROTECTIVE_EXIT`,
+  `PROTECTIVE_EXIT_TYPES = ("stop_loss", "trailing_stop")`, and shared
+  helper `has_protective_exit()` (works on genome dicts and objects).
+- **Promotion funnel**: new `protection` gate right after the kill-archive
+  check — a stop-less genome is rejected before any expensive evaluation.
+  NOT kill-archived: the same entry family with a stop added stays fair
+  game. Exam-slot candidate selection also skips unprotected genomes so
+  stratified slots are not wasted on strategies that cannot graduate.
+- **Paper trader**: `enroll_new` refuses unprotected champions a paper
+  slot; `grade_and_publish` adds protection to the PASS conditions and
+  publishes a `protected` flag per enrollment.
+- **Dashboard**: gate chart now shows 10 gates (protection included);
+  paper card gains a "stop?" column with a red NO STOP badge and the PASS
+  bar text names the requirement.
+- **Tests**: `[8b] protection gate` (helper semantics, funnel rejection at
+  `protection`) plus paper-trader checks (stop-less champion refused
+  enrollment; stop-less book graded FAIL after term). Fixture champions
+  updated to carry a stop loss.
+
+Expected effect on current paper cohort: the four stop-less winners (2 OR,
+2 KOFN) will grade FAIL at day 30 unless a protected descendant replaces
+them. The GA produces protected genomes ~61% of the time by construction
+(1-3 exits drawn from 5 types, 2 protective), so funnel supply is fine;
+selection pressure now favors protected exits because only they graduate.
+
 ## 2026-09-02 — Autopilot: forward-feedback goal-seeking + sentinel watchdog
 
 User directive: full autopilot, goal-seeking toward profit. Implemented the

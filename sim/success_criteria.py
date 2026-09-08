@@ -38,6 +38,23 @@ LONG_ONLY = True
 # drift alone, by at least this margin.
 LAB_BENCH_MIN_EXCESS_USD = 0.0025 * BOOK_USD  # 0.25% of book above the benchmark
 LAB_BENCH_EXCESS_FACTOR = 1.25    # and at least 25% above it when it is positive
+# Protection gate (user decision 2026-09-09): a strategy cannot qualify for
+# promotion, paper, or live unless it carries a protective exit (stop_loss or
+# trailing_stop). Time-only exits ride crashes to the bottom.
+PAPER_REQUIRE_PROTECTIVE_EXIT = True
+PROTECTIVE_EXIT_TYPES = ("stop_loss", "trailing_stop")
+
+
+def has_protective_exit(genome_or_dict) -> bool:
+    rules = (genome_or_dict.get("exit_rules") if isinstance(genome_or_dict, dict)
+             else getattr(genome_or_dict, "exit_rules", None)) or []
+    for r in rules:
+        et = r.get("exit_type") if isinstance(r, dict) else getattr(r, "exit_type", "")
+        if et in PROTECTIVE_EXIT_TYPES:
+            return True
+    return False
+
+
 # Embargo between in-sample and out-of-sample windows: candidates must not be
 # scored on bars adjacent to their training data (boundary leakage hygiene).
 LAB_EMBARGO_BARS = 24
