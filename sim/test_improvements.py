@@ -381,6 +381,43 @@ def test_funnel(features, best):
     print(f"      verdict={out.get('verdict')} failed_at={out.get('failed_at')}")
 
 
+def test_protection_gate(features):
+    print("\n[8b] protection gate: no stop loss, no promotion")
+    from evolution.genome import random_genome
+    from evolution.promotion_funnel import PromotionFunnel
+    from success_criteria import has_protective_exit
+
+    check("stop_loss counts as protection",
+          has_protective_exit({"exit_rules": [
+              {"exit_type": "stop_loss", "value": 0.01}]}))
+    check("trailing_stop counts as protection",
+          has_protective_exit({"exit_rules": [
+              {"exit_type": "trailing_stop", "value": 0.02}]}))
+    check("time_stop + profit_target alone do NOT count",
+          not has_protective_exit({"exit_rules": [
+              {"exit_type": "time_stop", "value": 46},
+              {"exit_type": "profit_target", "value": 0.02}]}))
+    check("empty/missing exit rules do not count",
+          not has_protective_exit({}) and not has_protective_exit(
+              {"exit_rules": None}))
+
+    random.seed(77)
+    g = random_genome()
+    g.exit_rules = [r for r in g.exit_rules
+                    if r.exit_type not in ("stop_loss", "trailing_stop")]
+    if not g.exit_rules:
+        from evolution.genome import ExitRule
+        g.exit_rules = [ExitRule("time_stop", 24)]
+    check("genome objects handled too", not has_protective_exit(g))
+
+    funnel = PromotionFunnel(features)
+    out = funnel.run(g, n_trials_context=5000, verbose=False)
+    check("funnel rejects a stop-less genome at the protection gate",
+          out.get("verdict") == "REJECT"
+          and out.get("failed_at") == "protection",
+          f"got {out.get('verdict')}/{out.get('failed_at')}")
+
+
 def test_vintage_ledger(features, tmp: Path):
     print("\n[9] vintage forward ledger")
     import evolution.vintage_ledger as vl
@@ -1077,6 +1114,7 @@ def test_paper_trader(features):
         "entry_conditions": [{"indicator": "price_roc_1h", "operator": ">",
                               "threshold": -1e9}],
         "exit_rules": [{"exit_type": "profit_target", "value": 0.01},
+                       {"exit_type": "stop_loss", "value": 0.01},
                        {"exit_type": "time_stop", "value": 5}],
         "sizing_method": "fixed", "sizing_base": 0.3, "sizing_max": 0.5}
     with tf.TemporaryDirectory() as td:
@@ -1088,6 +1126,11 @@ def test_paper_trader(features):
                 {"genome_id": "paper_test_beta", "genome": {
                     **always_long, "genome_id": "paper_test_beta",
                     "entry_logic": "AND"}},
+                # No stop_loss/trailing_stop: must be refused a paper slot
+                {"genome_id": "paper_test_naked", "genome": {
+                    **always_long, "genome_id": "paper_test_naked",
+                    "entry_logic": "KOFN",
+                    "exit_rules": [{"exit_type": "time_stop", "value": 46}]}},
             ]}))
         old_state = (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
                      pt.live_price, hfe.get_historical_features_1h)
@@ -1102,7 +1145,8 @@ def test_paper_trader(features):
 
             conn = pt._conn()
             n = pt.enroll_new(conn, verbose=False)
-            check("enrolled both champion families", n == 2)
+            check("enrolled both protected champion families, "
+                  "refused the stop-less one", n == 2)
             check("re-enroll is idempotent", pt.enroll_new(conn, verbose=False) == 0)
             # Enrollment anchors at the newest bar (no history replay)
             anchors = [r[0] for r in conn.execute(
@@ -1133,6 +1177,23 @@ def test_paper_trader(features):
             # No new bars -> no double processing
             stats2 = pt.process_bars(conn, verbose=False)
             check("idempotent on same bars", stats2["bars"] == 0)
+
+            # Protection rule: strip the stop loss from one enrollment and
+            # age it past the 30-day term -> verdict must be FAIL even if
+            # every other bar is cleared, and the status row must say so.
+            naked = {**always_long,
+                     "exit_rules": [{"exit_type": "time_stop", "value": 46}]}
+            eid0 = conn.execute("SELECT id FROM enrollments").fetchone()[0]
+            conn.execute(
+                "UPDATE enrollments SET genome_json=?, enrolled_ts=? WHERE id=?",
+                (json.dumps(naked), time.time() - 31 * 86400, eid0))
+            conn.commit()
+            payload2 = pt.grade_and_publish(conn)
+            row = next(e for e in payload2["enrollments"] if e["id"] == eid0)
+            check("stop-less book graded FAIL after term",
+                  row["verdict"] == "FAIL" and row["protected"] is False)
+            check("protected flag published for dashboard",
+                  all("protected" in e for e in payload2["enrollments"]))
             conn.close()
         finally:
             (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
@@ -1403,6 +1464,7 @@ def main():
         best, _ = test_e2e(features, n_workers=4)
         test_e2e(features, n_workers=1)
         test_funnel(features, best)
+        test_protection_gate(features)
         test_vintage_ledger(features, Path(td))
 
     print(f"\n{'='*50}\nRESULT: {PASS} passed, {FAIL} failed")

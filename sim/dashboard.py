@@ -262,11 +262,12 @@ def plain_english_trend(direction: str, prev: dict, recent: dict, prev_med, rec_
 # ---------------------------------------------------------------------------
 
 GATE_ORDER = [
-    "kill_archive", "feasibility", "oos", "benchmark", "walk_forward",
-    "fee_stress", "perturbation", "mev", "dsr",
+    "kill_archive", "protection", "feasibility", "oos", "benchmark",
+    "walk_forward", "fee_stress", "perturbation", "mev", "dsr",
 ]
 GATE_FRIENDLY = {
     "kill_archive": "blocked at the door (known-bad family)",
+    "protection": "missing a stop loss (no safety brake)",
     "feasibility": "basic check (enough trades, profit, drawdown)",
     "oos": "unseen later data",
     "benchmark": "beating buy-and-hold (beta filter)",
@@ -282,7 +283,7 @@ N_GATES = len(GATE_ORDER)
 def funnel_depth(r: dict):
     """Deepest exam gate cleared by any candidate of one finished search.
 
-    Returns 0..8 (8 = full pass) or None if the search ran no funnel.
+    Returns 0..len(GATE_ORDER) (max = full pass) or None if no funnel ran.
     """
     rows = r.get("funnel")
     if not rows:
@@ -1532,6 +1533,11 @@ def explore_summary_card(s: dict) -> str:
   </div>"""
 
 
+_NO_STOP_BADGE = ('<span class="badge bad" '
+                  'title="no stop loss or trailing stop, cannot PASS">'
+                  'NO STOP</span>')
+
+
 def paper_trading_card(s: dict) -> str:
     """Live-quote shadow trading status (the official PAPER stage)."""
     try:
@@ -1546,6 +1552,7 @@ def paper_trading_card(s: dict) -> str:
         f"<td>{e['days']:.0f}/{bars.get('min_days', 30)}</td><td>{e['trades']}</td>"
         f"<td class='{'pos' if e['net_pnl'] >= 0 else 'neg'}'>{e['net_pnl']:+.2f}</td>"
         f"<td>{e['max_dd_pct']:.1f}%</td>"
+        f"<td>{'<span class=badge>yes</span>' if e.get('protected', True) else _NO_STOP_BADGE}</td>"
         f"<td><span class='badge {'ok' if e['verdict'] == 'PASS' else ('bad' if e['verdict'] == 'FAIL' else 'warn')}'>{e['verdict']}</span></td></tr>"
         for e in p["enrollments"]
     )
@@ -1553,10 +1560,11 @@ def paper_trading_card(s: dict) -> str:
   <div class="card">
     <h2>Paper trading <span class="section-hint">frozen champions vs REAL Jupiter quotes — no money at risk</span></h2>
     <p class="lead">Each champion trades a virtual ${p.get('book_usd', 0):.0f} book at live quoted prices for 30 days.
-       PASS needs &ge;{bars.get('min_trades', 20)} trades, &ge;+${bars.get('min_net_usd', 0):.0f} net, drawdown &le;{int((bars.get('max_dd', 0.2)) * 100)}%.
+       PASS needs &ge;{bars.get('min_trades', 20)} trades, &ge;+${bars.get('min_net_usd', 0):.0f} net, drawdown &le;{int((bars.get('max_dd', 0.2)) * 100)}%,
+       and a stop loss (or trailing stop) in the strategy.
        A PASS here is the agreed gate before any live-capital discussion.</p>
     <table>
-      <tr><th>type</th><th>strategy</th><th>days</th><th>trades</th><th>net $</th><th>max DD</th><th>verdict</th></tr>
+      <tr><th>type</th><th>strategy</th><th>days</th><th>trades</th><th>net $</th><th>max DD</th><th>stop?</th><th>verdict</th></tr>
       {rows}
     </table>
   </div>"""
