@@ -1,0 +1,56 @@
+=== Daily Trading Bot Report ===
+Date: 2026-08-21
+Generated: 2026-08-22T02:13:21.538710
+
+Here is a concise daily trading bot report:
+
+**Daily Trading Bot Report (2026-08-21)**
+
+**Key Metrics:**
+- Directional accuracy: 53.8%
+- Precision: 40.8%
+- Recall: 20.5%
+
+**Best Strategy:** momentum_breakout
+- Best P&L: 0.0141 USD
+
+**Compute Cost:**
+- Today: 0.0000 CHF
+- Monthly estimate: 0.00 CHF
+
+**Rules Not Met:** No profitable strategies found.
+
+**Models:** 10 saved models, 5 training runs.
+
+--- Raw Stats ---
+{
+  "date": "2026-08-21",
+  "quotes": 0,
+  "features": 0,
+  "models_trained": 10,
+  "predictions": 0,
+  "trades": 0,
+  "alerts": 0,
+  "training_runs": 5
+}
+
+--- Metrics ---
+{
+  "tft": {
+    "directional_accuracy": 0.5383054777316202,
+    "precision": 0.4081569596786652,
+    "recall": 0.20474271543707379,
+    "mse": 9.985521319322288e-05
+  },
+  "validation": {
+    "strategies_tested": 7,
+    "best_strategy": "momentum_breakout",
+    "best_pnl": 0.01413141519662918
+  }
+}
+
+--- Cost ---
+{
+  "total_chf": 0.0,
+  "monthly_estimate_chf": 0.0
+}
