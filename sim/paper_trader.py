@@ -343,11 +343,18 @@ def main() -> int:
     # Single-instance lock (concurrent runs would double-enter positions)
     import os as _os
     import subprocess as _sp
+    # Only count real python interpreters running this script; pgrep -f also
+    # matches shells that merely quote the script name (see runner lock).
     _pids = _sp.run(["pgrep", "-f", "paper_trader.py"],
                     capture_output=True, text=True).stdout.split()
-    if any(x != str(_os.getpid()) for x in _pids):
-        print("paper trader: another instance alive — exiting")
-        return 0
+    for _p in _pids:
+        if _p == str(_os.getpid()):
+            continue
+        _cmd = _sp.run(["ps", "-o", "command=", "-p", _p],
+                       capture_output=True, text=True).stdout.strip()
+        if "python" in (_cmd.split() or [""])[0].lower():
+            print("paper trader: another instance alive — exiting")
+            return 0
     conn = _conn()
     try:
         n_new = enroll_new(conn)

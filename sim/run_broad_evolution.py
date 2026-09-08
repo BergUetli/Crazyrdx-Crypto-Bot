@@ -154,10 +154,22 @@ def main():
     # runner is alive, exit quietly — launchd/KeepAlive retries later.
     import os as _os
     import subprocess as _sp
+    # pgrep -f matches ANY cmdline containing the script name, including a
+    # shell that merely quotes it (observed: monitoring commands blocked the
+    # respawn). Only count real python interpreters running this script.
     _pids = _sp.run(["pgrep", "-f", "run_broad_evolution.py"],
                     capture_output=True, text=True).stdout.split()
-    if any(p != str(_os.getpid()) for p in _pids):
-        print(f"Another runner is already alive ({_pids}) — exiting.")
+    _others = []
+    for _p in _pids:
+        if _p == str(_os.getpid()):
+            continue
+        _cmd = _sp.run(["ps", "-o", "command=", "-p", _p],
+                       capture_output=True, text=True).stdout.strip()
+        _argv0 = (_cmd.split() or [""])[0]
+        if "python" in _argv0.lower():
+            _others.append(_p)
+    if _others:
+        print(f"Another runner is already alive ({_others}) — exiting.")
         return
 
     features = get_historical_features_1h("SOL/USDC", limit=4000)

@@ -30,11 +30,19 @@ PAPER minimum stays.
   enrollment; stop-less book graded FAIL after term). Fixture champions
   updated to carry a stop loss.
 
-Expected effect on current paper cohort: the four stop-less winners (2 OR,
-2 KOFN) will grade FAIL at day 30 unless a protected descendant replaces
-them. The GA produces protected genomes ~61% of the time by construction
-(1-3 exits drawn from 5 types, 2 protective), so funnel supply is fine;
-selection pressure now favors protected exits because only they graduate.
+Deploy finding: ALL 8 current paper books lack a stop (the MEANREV/AND
+books have profit targets, which cap gains but do not stop losses), so the
+whole cohort will grade FAIL at day 30 unless protected descendants
+replace them. The GA produces protected genomes ~61% of the time by
+construction (1-3 exits drawn from 5 types, 2 protective), so funnel
+supply is fine; selection pressure now favors protected exits because
+only they graduate.
+
+Also fixed in passing: both single-instance locks (runner, paper trader)
+used `pgrep -f <script>`, which matches any process whose command line
+merely CONTAINS the script name — an observing shell command blocked the
+runner's respawn twice during this deploy. The locks now verify the
+matched process is a python interpreter actually running the script.
 
 ## 2026-09-02 — Autopilot: forward-feedback goal-seeking + sentinel watchdog
 
