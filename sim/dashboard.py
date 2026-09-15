@@ -1806,11 +1806,11 @@ class Handler(BaseHTTPRequestHandler):
     _cache = {"ts": 0.0, "status": None}
 
     def _cached_status(self):
-        import time as _t
-        now = _t.time()
-        if Handler._cache["status"] is None or now - Handler._cache["ts"] > 60:
-            Handler._cache["status"] = collect_status()
-            Handler._cache["ts"] = now
+        # Requests NEVER build status inline. A wedged disk read inside
+        # collect_status() used to capture every request thread (10s
+        # auto-refresh piled them onto the same stuck build) until the
+        # whole server timed out. Only _status_refresh_loop builds; here
+        # we serve whatever it produced last, however stale.
         return Handler._cache["status"]
 
     def do_GET(self):
@@ -1830,6 +1830,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api"):
             s = self._cached_status()
+            if s is None:
+                body = b'{"status": "warming_up"}'
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             # compact API
             out = {
                 "now": s["now"],
@@ -1868,12 +1876,41 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        body = html_page(self._cached_status()).encode()
+        s = self._cached_status()
+        if s is None:
+            # First build still running (or wedged): stay responsive.
+            body = (b"<!doctype html><meta http-equiv='refresh' content='5'>"
+                    b"<body style='font-family:sans-serif;background:#0b0f14;"
+                    b"color:#e7eef7;padding:40px'>Dashboard is warming up "
+                    b"(collecting status)&hellip; retrying in 5s.</body>")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        body = html_page(s).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+
+def _status_refresh_loop():
+    """Sole builder of the status cache, on its own daemon thread.
+
+    If a build wedges in the kernel (observed: uninterruptible pread,
+    DISK_IO_STALL incidents), only THIS thread is stuck; requests keep
+    serving the last-good cache and the heartbeat keeps beating, so the
+    sentinel sees the true picture instead of a dead port."""
+    while True:
+        try:
+            s = collect_status()
+            Handler._cache = {"ts": time.time(), "status": s}
+        except Exception as ex:
+            print(f"status build failed: {ex!r}", flush=True)
+        time.sleep(60)
 
 
 def _heartbeat_loop():
@@ -1904,6 +1941,7 @@ def main():
 
     host = "0.0.0.0" if args.lan else "127.0.0.1"
     threading.Thread(target=_heartbeat_loop, daemon=True).start()
+    threading.Thread(target=_status_refresh_loop, daemon=True).start()
     httpd = ThreadingHTTPServer((host, args.port), Handler)
     url = f"http://{'127.0.0.1' if not args.lan else 'localhost'}:{args.port}"
     print(f"Dashboard: {url}")

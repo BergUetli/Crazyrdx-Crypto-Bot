@@ -47,6 +47,14 @@ INDICATORS = [
     "sol_btc_ratio", "sol_btc_ratio_roc_4h", "sol_btc_ratio_roc_1d", "sol_btc_corr_1d",
     "btc_leading_sol", "eth_leading_sol", "cross_trifecta",
     "sol_eth_ratio", "sol_eth_ratio_roc_4h", "sol_eth_ratio_roc_1d", "sol_eth_corr_1d",
+    # Binance futures derivatives (merged at read time; NaN before coverage
+    # ~2026-07, so conditions on them cannot fire where data is missing).
+    # Evidence-backed families: funding extremes -> mean reversion, OI
+    # build-ups -> cascade risk, positioning ratios -> crowding.
+    "d_funding", "d_funding_z_30d", "d_oi_roc_4h", "d_oi_roc_1d",
+    "d_top_ls_ratio", "d_top_ls_z_30d", "d_global_ls_ratio",
+    "d_taker_ratio", "d_taker_ratio_roc_4h",
+    "d_btc_funding", "d_btc_oi_roc_4h", "d_btc_top_ls_ratio",
 ]
 
 # Threshold ranges per indicator type.

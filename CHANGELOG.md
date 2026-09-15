@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented here.
 
+## 2026-09-15 — Derivatives features wired into the search + dashboard wedge fix
+
+User approved wiring the derivatives data (collected since July, deferred
+until now) into the evolution engine.
+
+- **`layer1/derivatives_features.py`** (new): joins Binance futures metrics
+  from derivatives.db onto the 1h feature rows at READ time (inside
+  `get_historical_features_1h`) — stored candle features stay pure, and
+  backfilled history is picked up on the next load. 12 new scale-free
+  indicators, prefixed `d_`: own-asset funding rate + 30d z-score, OI RoC
+  (4h/1d), top-trader and global long/short ratios + crowding z, taker
+  buy/sell ratio + RoC, plus BTC funding/OI/positioning as market-wide
+  context. Evidence-backed families: funding extremes → mean reversion,
+  OI build-ups → cascade risk, positioning → crowding.
+- **Honesty rules**: strictly causal (a bar only sees data at or before it;
+  z-score windows END at the previous bar). Bars outside coverage carry
+  NaN, never 0.0 — NaN compares False in both signal engines, so a
+  condition on a missing reading can never fire. Timestamp units
+  auto-detected (both DBs store epoch milliseconds).
+- **Coverage on real data**: funding spans the full 4000-bar search window
+  (~166d); hourly OI/positioning cover ~63d and grow daily. DB read is
+  read-only with a busy timeout (collector writes hourly).
+- **`genome.py` INDICATORS** += the 12 `d_*` names (95 total). Calibration,
+  frontier immigrants, and exploration tracking pick them up automatically;
+  being least-explored, frontier immigrants will target them immediately.
+- **Dashboard wedge root-cause fix**: requests NEVER build status inline
+  any more. Previously every request past the 60s cache TTL called
+  collect_status() itself, so one wedged disk read (repeated
+  DISK_IO_STALL incidents, 3 on 2026-09-15 alone) captured every request
+  thread via the 10s auto-refresh until the whole server timed out. Now a
+  single daemon thread owns the rebuild; requests serve the last-good
+  cache, a warming-up page is shown before the first build, /api returns
+  503 warming_up.
+- **Tests**: `[20b] derivatives features` — key completeness, coverage
+  boundary NaN, forward-fill, RoC math, causal z warm-up, NaN-never-fires
+  in the vectorized engine, missing-DB degradation. Suite 156 checks.
+
 ## 2026-09-09 — Protection gate: no stop loss, no promotion (user-approved)
 
 Winner analysis at paper day 7 found the four top-earning paper books carry

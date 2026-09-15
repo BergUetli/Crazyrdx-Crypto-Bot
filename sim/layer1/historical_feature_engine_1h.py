@@ -702,6 +702,25 @@ def get_historical_features_1h(
         rows.append(d)
 
     conn.close()
+
+    # Merge derivatives indicators (funding/OI/positioning) at read time.
+    # Stored rows stay pure candle features; bars outside derivatives
+    # coverage get NaN so conditions on them can never fire.
+    try:
+        from layer1.derivatives_features import attach_derivatives
+        attach_derivatives(rows, pair)
+    except Exception as _ex:
+        # Fail safe: rows without the keys default to 0.0 downstream, which
+        # for ratio-type features is a fake reading — so fill NaN by hand.
+        import math as _m
+        try:
+            from layer1.derivatives_features import DERIV_INDICATORS as _DI
+            for _r in rows:
+                for _k in _DI:
+                    _r["features"][_k] = _m.nan
+        except Exception:
+            pass
+        print(f"WARNING derivatives merge failed: {_ex!r}")
     return rows
 
 

@@ -1200,6 +1200,85 @@ def test_paper_trader(features):
              pt.live_price, hfe.get_historical_features_1h) = old_state
 
 
+def test_derivatives_features(features):
+    print("\n[20b] derivatives features: causal join, NaN outside coverage")
+    import math
+    import tempfile as tf
+    import layer1.derivatives_features as df
+
+    rows = [{"ts": f["ts"], "features": dict(f["features"])}
+            for f in features[:400]]
+    hours = [df._hour_ts(r["ts"]) for r in rows]  # hour grid in SECONDS
+    t0 = hours[100]  # derivatives history starts at bar 100
+
+    with tf.TemporaryDirectory() as td:
+        db = Path(td) / "derivatives.db"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE derivs (symbol TEXT, metric TEXT, "
+                     "ts INTEGER, value REAL)")
+        ins = []
+        for sym in ("SOLUSDT", "BTCUSDT"):
+            for i, h in enumerate(hours[100:]):
+                if (h - t0) % (8 * 3600) == 0:  # funding prints every 8h
+                    ins.append((sym, "funding_rate", h * 1000, 0.0001 * (1 + i % 5)))
+                ins.append((sym, "open_interest", h * 1000, 1000.0 + i))
+                ins.append((sym, "top_ls_position_ratio", h * 1000, 1.5 + 0.01 * (i % 10)))
+                ins.append((sym, "global_ls_account_ratio", h * 1000, 2.0))
+                ins.append((sym, "taker_buy_sell_ratio", h * 1000, 1.0))
+        conn.executemany("INSERT INTO derivs VALUES (?,?,?,?)", ins)
+        conn.commit(); conn.close()
+
+        old_db = df.DB_DERIVS
+        try:
+            df.DB_DERIVS = db
+            covered = df.attach_derivatives(rows, "SOL/USDC")
+        finally:
+            df.DB_DERIVS = old_db
+
+    check("every row carries every derivatives key",
+          all(all(k in r["features"] for k in df.DERIV_INDICATORS)
+              for r in rows))
+    check(f"coverage counted only where data exists ({covered})",
+          covered == 300)
+    pre = rows[50]["features"]
+    check("bars BEFORE coverage are NaN, not 0.0",
+          all(math.isnan(pre[k]) for k in df.DERIV_INDICATORS))
+    in_cov = rows[300]["features"]
+    check("funding forward-filled onto 1h grid inside coverage",
+          in_cov["d_funding"] == in_cov["d_funding"]
+          and in_cov["d_funding"] > 0)
+    check("OI RoC computed and finite inside coverage",
+          abs(in_cov["d_oi_roc_4h"] - (4.0 / (1000.0 + 200 - 4))) < 1e-9)
+    check("z-score NaN until a week of history exists (causal warm-up)",
+          math.isnan(rows[150]["features"]["d_top_ls_z_30d"])
+          and not math.isnan(rows[290]["features"]["d_top_ls_z_30d"]))
+    check("BTC context features attached",
+          not math.isnan(in_cov["d_btc_funding"]))
+
+    # NaN must mean "condition never fires" in the vectorized engine
+    from evolution.genome import EntryCondition
+    from layer1.fast_signals import get_columns, cond_series
+    cols = get_columns(rows)
+    varr, thr = cond_series(
+        EntryCondition(indicator="d_top_ls_ratio", operator="<",
+                       threshold=999.0), cols, len(rows))
+    check("NaN bars produce no signal even for always-true thresholds",
+          not bool((varr[:100] < thr).any())
+          and bool((varr[100:] < thr).any()))
+
+    # Broken/missing DB degrades to NaN, never 0.0
+    rows2 = [{"ts": features[0]["ts"], "features": {}}]
+    old_db = df.DB_DERIVS
+    try:
+        df.DB_DERIVS = Path("/nonexistent/derivs.db")
+        df.attach_derivatives(rows2, "SOL/USDC")
+    finally:
+        df.DB_DERIVS = old_db
+    check("missing DB fills NaN for all keys",
+          all(math.isnan(rows2[0]["features"][k])
+              for k in df.DERIV_INDICATORS))
+
+
 def test_forward_feedback(features):
     print("\n[21] autopilot forward-feedback: bounded, gate-untouchable")
     import tempfile as tf
@@ -1454,6 +1533,7 @@ def main():
     test_exploration(features)
     test_invention_grammar(features)
     test_paper_trader(features)
+    test_derivatives_features(features)
     test_forward_feedback(features)
     test_sentinel()
     test_research_agent(features)
