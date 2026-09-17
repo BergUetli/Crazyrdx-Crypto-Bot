@@ -25,13 +25,24 @@ from layer1.historical_downloader import download_candles, init_historical_db
 from layer1.historical_feature_engine_1h import compute_all_features_1h
 
 PAIRS_1H = ["SOL/USDC", "BTC/USDC", "ETH/USDC"]
+# Validation-only majors (2026-09-17, user decision): the seven other coins
+# whose derivatives we already collect. Candles + features only — they feed
+# cross-asset validation and future cross-sectional work. They are NOT
+# traded and NOT paper books: Jupiter cannot execute most of them, and a
+# $500 book split ten ways would drown in fixed costs. USDT quote because
+# every major has a liquid Binance USDT pair (USDC pairs are patchy).
+VALIDATION_PAIRS_1H = [
+    "BNB/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT",
+    "AVAX/USDT", "LINK/USDT", "LTC/USDT",
+]
+ALL_PAIRS_1H = PAIRS_1H + VALIDATION_PAIRS_1H
 
 
 async def _download_all(days: int) -> dict:
     end = int(time.time() * 1000)
     start = end - days * 86400_000
     out = {}
-    for pair in PAIRS_1H:
+    for pair in ALL_PAIRS_1H:
         try:
             out[pair] = await download_candles(pair, start, end, interval="1h")
         except Exception as e:
@@ -44,7 +55,7 @@ def main() -> int:
     init_historical_db()
     counts = asyncio.run(_download_all(days=12))
     feats = {}
-    for pair in PAIRS_1H:
+    for pair in ALL_PAIRS_1H:
         try:
             feats[pair] = compute_all_features_1h(pair)
         except Exception as e:

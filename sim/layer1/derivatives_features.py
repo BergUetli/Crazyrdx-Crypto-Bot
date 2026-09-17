@@ -34,11 +34,19 @@ from config import DATA_DIR
 
 DB_DERIVS = DATA_DIR / "derivatives.db"
 
-# Pair traded in the sim -> Binance futures symbol
+# Pair traded/validated in the sim -> Binance futures symbol
 PAIR_SYMBOL = {
     "SOL/USDC": "SOLUSDT",
     "BTC/USDC": "BTCUSDT",
     "ETH/USDC": "ETHUSDT",
+    # Validation-only majors (candles collected, never traded)
+    "BNB/USDT": "BNBUSDT",
+    "XRP/USDT": "XRPUSDT",
+    "DOGE/USDT": "DOGEUSDT",
+    "ADA/USDT": "ADAUSDT",
+    "AVAX/USDT": "AVAXUSDT",
+    "LINK/USDT": "LINKUSDT",
+    "LTC/USDT": "LTCUSDT",
 }
 
 # The indicator names exposed to the GA. Every feature row that passes
