@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here.
 
+## 2026-09-17 — Seven validation-only majors added (user decision)
+
+Candles + 1h features now collected for BNB, XRP, DOGE, ADA, AVAX, LINK,
+LTC (USDT pairs) — the same coins whose derivatives we already gather.
+220-day backfill done (5,230 feature rows each); hourly refresh now covers
+10 pairs (~30s). Per-pair derivatives merge verified. These are a
+VALIDATION and research surface (cross-asset transfer stats, future
+cross-sectional momentum): they are not traded and get no paper books —
+Jupiter cannot execute most of them and a $500 book split ten ways would
+drown in fixed costs. Trading stays SOL/USDC. The cross-asset exam gate
+still tests on BTC/ETH only; widening it to these coins is a gate change
+that will be proposed separately once transfer statistics accumulate.
+
 ## 2026-09-15 — Derivatives features wired into the search + dashboard wedge fix
 
 User approved wiring the derivatives data (collected since July, deferred
