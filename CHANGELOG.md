@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here.
 
+## 2026-09-30 — Derivatives DB to WAL; silent-NaN path made loud
+
+- `derivatives.db` switched to WAL (+ synchronous=NORMAL) in the collector.
+  Under the default rollback journal the hourly upsert batch held an
+  exclusive lock past readers' 5s timeouts: sentinel raised false
+  "derivatives stalled [database is locked]" alarms, and a runner feature
+  load hitting the same lock would have blanked all 12 `d_*` features for a
+  cycle WITHOUT any log line (compute_deriv_series swallowed the error).
+- `derivatives_features.py`: plain connection + `query_only` (read-only
+  URIs can fail on WAL files without -shm), 30s busy timeout, and a
+  WARNING line whenever a read fails so NaN-by-failure is never silent.
+- Day-29 paper review (SOL +18.5% over the window): scored each book with
+  the funnel's exposure-matched benchmark hurdle. OR/KOFN books beat drift
+  (+$39-42 vs +$23-28 benchmark) but made 8-9 trades; MEANREV/AND books
+  made 33-34 trades but did not beat drift (AND +$29.33 vs +$29.38). No
+  book passes both, independent of the stop rule. PAPER grading has no
+  benchmark bar today; adding one is a gate change proposed to the user.
+
 ## 2026-09-17 — Seven validation-only majors added (user decision)
 
 Candles + 1h features now collected for BNB, XRP, DOGE, ADA, AVAX, LINK,

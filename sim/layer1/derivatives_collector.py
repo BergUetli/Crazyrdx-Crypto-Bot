@@ -68,7 +68,13 @@ ENDPOINTS: Dict[str, Tuple[str, Dict[str, Any], str, str]] = {
 
 def init_db() -> sqlite3.Connection:
     DB_DERIVS.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_DERIVS))
+    conn = sqlite3.connect(str(DB_DERIVS), timeout=30)
+    # WAL: readers (runner feature loads, sentinel) never block on this
+    # hourly writer. Under the default rollback journal a long upsert batch
+    # held an exclusive lock past readers' timeouts (sentinel false alarms;
+    # a runner read would silently blank the derivatives features).
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("""
         CREATE TABLE IF NOT EXISTS derivs (
             symbol  TEXT NOT NULL,

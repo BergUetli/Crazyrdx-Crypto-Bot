@@ -168,10 +168,15 @@ def compute_deriv_series(hours: List[int],
 
     Returns None if the derivatives DB is unreadable (caller then fills NaN).
     """
+    if not DB_DERIVS.exists():
+        return None
     try:
-        conn = sqlite3.connect(f"file:{DB_DERIVS}?mode=ro", uri=True,
-                               timeout=4.0)
-    except sqlite3.Error:
+        # Plain connection + query_only rather than a mode=ro URI: read-only
+        # URIs can fail on a WAL database whose -shm file is absent.
+        conn = sqlite3.connect(str(DB_DERIVS), timeout=30.0)
+        conn.execute("PRAGMA query_only=1")
+    except sqlite3.Error as ex:
+        print(f"WARNING derivatives DB unreadable: {ex!r}", flush=True)
         return None
     try:
         def grid(sym: str, metric: str) -> List[float]:
@@ -200,7 +205,9 @@ def compute_deriv_series(hours: List[int],
             "d_btc_oi_roc_4h": _roc(btc_oi, 4),
             "d_btc_top_ls_ratio": btc_top_ls,
         }
-    except sqlite3.Error:
+    except sqlite3.Error as ex:
+        print(f"WARNING derivatives read failed, features NaN this load: "
+              f"{ex!r}", flush=True)
         return None
     finally:
         conn.close()
