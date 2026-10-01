@@ -56,7 +56,17 @@ basis/stress/divergence are NaN unless every input is live; NaN never fires
 a condition. Per-pair CEX symbol (no more SOL data inside BTC features).
 All feature rows recomputed in place (INSERT OR REPLACE, no empty window).
 
-Tests: `[20c]` stale feeds, `[20d]` multi-instrument (21 checks).
+**Costs are measured, not assumed** (follow-up the same day): the first
+hourly probe run across all seven coins showed AVAX at 21 bps one side
+(vs 5.5 an hour earlier; thin wrapped pool) and JUP at 2.7. Once the probe
+has 12+ quotes for a coin in the last 7 days, its median one-side cost
+replaces the registry estimate (x1.5 margin, floor 2.2 bps), and a coin
+above 10 bps one side leaves the search rotation and gets no new paper
+books until it comes back down (it keeps being probed). AVAX starts out on
+its worst observed cost, so it sits out until the probe says otherwise.
+
+Tests: `[20c]` stale feeds, `[20d]` multi-instrument incl. probe-driven
+costs. Suite 177 checks.
 
 ## 2026-09-30 — Derivatives DB to WAL; silent-NaN path made loud
 

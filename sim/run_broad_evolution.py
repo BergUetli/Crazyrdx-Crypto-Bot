@@ -69,13 +69,17 @@ MIN_FEATURE_ROWS = 1000  # below this an instrument is skipped for the cycle
 def next_instrument() -> str:
     """Round-robin over tradeable instruments; position survives restarts
     (a cycle counter would reset to SOL on every redeploy)."""
-    from instruments import TRADEABLE
+    from instruments import TRADEABLE, active_instruments
     idx = -1
     try:
         idx = int(json.loads(ROTATION_STATE.read_text()).get("idx", -1))
     except Exception:
         pass
-    idx = (idx + 1) % len(TRADEABLE)
+    active = set(active_instruments()) or {"SOL/USDC"}
+    for _ in range(len(TRADEABLE)):
+        idx = (idx + 1) % len(TRADEABLE)
+        if TRADEABLE[idx] in active:
+            break
     try:
         ROTATION_STATE.write_text(json.dumps(
             {"idx": idx, "instrument": TRADEABLE[idx], "ts": time.time()}))

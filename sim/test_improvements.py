@@ -1324,13 +1324,39 @@ def test_multi_instrument(features):
     from evolution.promotion_funnel import PromotionFunnel
     import success_criteria as sc
 
+    old_probe = ins.PROBE_DB
+    tmpd = tf.TemporaryDirectory()
+    ins.PROBE_DB = Path(tmpd.name) / "probe.db"  # hermetic: no real quotes
     check("registry: 7 Jupiter-executable instruments, SOL first",
           len(ins.TRADEABLE) == 7 and ins.TRADEABLE[0] == "SOL/USDC")
-    check("SOL/BTC/ETH/JUP cost = base Jupiter rate",
+    check("SOL/BTC/ETH/JUP cost = base Jupiter rate (no probe data yet)",
           all(ins.fee_rate(i) == sc.FEE_RATE_BASE
               for i in ("SOL/USDC", "BTC/USDC", "ETH/USDC", "JUP/USDT")))
-    check("AVAX cost reflects its measured spread (1.5x margin)",
-          abs(ins.fee_rate("AVAX/USDT") - 1.5 * 10.9 / 2 / 1e4) < 1e-12)
+    check("AVAX starts inactive on its worst observed cost (21 bps/side)",
+          "AVAX/USDT" not in ins.active_instruments()
+          and "SOL/USDC" in ins.active_instruments())
+    # Probe data takes over once there are enough samples
+    pc = sqlite3.connect(ins.PROBE_DB)
+    pc.execute("CREATE TABLE quotes (ts REAL, side TEXT, size_usd REAL, "
+               "binance_mid REAL, eff_price REAL, cost_bps REAL, "
+               "impact_pct REAL, route_hops INTEGER, source TEXT, error TEXT, "
+               "instrument TEXT)")
+    now = time.time()
+    for k in range(ins.PROBE_MIN_SAMPLES):
+        pc.execute("INSERT INTO quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (now - k * 3600, "buy", 250, 1, 1, 3.0, 0, 1, "t", None,
+                    "AVAX/USDT"))
+        pc.execute("INSERT INTO quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (now - k * 3600, "buy", 250, 1, 1, 25.0, 0, 1, "t", None,
+                    "JUP/USDT"))
+    pc.commit(); pc.close()
+    check("probe median replaces registry: AVAX 3 bps -> active, 4.5 bps cost",
+          "AVAX/USDT" in ins.active_instruments()
+          and abs(ins.fee_rate("AVAX/USDT") - 4.5e-4) < 1e-12)
+    check("probe median 25 bps -> JUP leaves rotation, cost 37.5 bps",
+          "JUP/USDT" not in ins.active_instruments()
+          and abs(ins.fee_rate("JUP/USDT") - 37.5e-4) < 1e-12)
+    ins.PROBE_DB = Path(tmpd.name) / "none.db"  # back to registry-only
 
     random.seed(5)
     g = random_genome()
@@ -1463,6 +1489,8 @@ def test_multi_instrument(features):
         finally:
             (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
              pt.live_price, hfe.get_historical_features_1h) = old_state
+    ins.PROBE_DB = old_probe
+    tmpd.cleanup()
 
 
 def test_forward_feedback(features):

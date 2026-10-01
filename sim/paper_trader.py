@@ -162,6 +162,9 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
         inst = g.get("instrument") or "SOL/USDC"
         if inst not in INSTRUMENTS:
             continue  # not executable on our venue
+        from instruments import active_instruments
+        if inst not in active_instruments():
+            continue  # currently too costly to execute; retry next run
         newest_ts = _newest_ts(inst)
         if not newest_ts:
             continue
