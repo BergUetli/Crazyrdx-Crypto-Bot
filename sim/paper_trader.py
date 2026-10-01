@@ -41,6 +41,7 @@ from success_criteria import (
 DB_PAPER = DATA_DIR / "paper_trader.db"
 STATUS_JSON = DATA_DIR / "paper_status.json"
 MAX_CONCURRENT = 12
+MAX_PER_INSTRUMENT = 4  # mirrors the champion board's per-instrument cap
 TERM_DAYS = 35  # trade a few days past 30 so the 30d window is fully covered
 MIN_HOLD_BARS = 2
 COOLDOWN_BARS = 4
@@ -165,6 +166,12 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
         from instruments import active_instruments
         if inst not in active_instruments():
             continue  # currently too costly to execute; retry next run
+        n_inst = sum(
+            1 for (gj,) in conn.execute(
+                "SELECT genome_json FROM enrollments WHERE status='active'")
+            if (json.loads(gj).get("instrument") or "SOL/USDC") == inst)
+        if n_inst >= MAX_PER_INSTRUMENT:
+            continue  # keep slots spread across markets, like the board
         newest_ts = _newest_ts(inst)
         if not newest_ts:
             continue
