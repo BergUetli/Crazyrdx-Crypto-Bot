@@ -87,7 +87,10 @@ def structure_key(genome: StrategyGenome) -> str:
     # Cap condition count noise: drop pure sizing/exits from tabu key
     # Keep logic + primary conditions only
     body = "+".join(parts[:4]) if parts else "nocon"
-    return f"{logic}::{body}"
+    # A dead end on one instrument is not a dead end on another. SOL keeps
+    # an empty suffix so pre-existing archive keys stay valid.
+    from instruments import suffix
+    return f"{logic}::{body}{suffix(getattr(genome, 'instrument', ''))}"
 
 
 def exact_signature(genome: StrategyGenome) -> Tuple:

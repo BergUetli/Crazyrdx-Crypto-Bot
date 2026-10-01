@@ -67,7 +67,9 @@ def compute() -> Dict[str, Any]:
             logic_pnls[logic].append(pnl)
             for i in inds:
                 ind_pnls[i].append(pnl)
-            fam_pnls[f"{logic}|{','.join(inds)}"].append(pnl)
+            from instruments import suffix as _sfx
+            fam_pnls[f"{logic}|{','.join(inds)}"
+                     f"{_sfx(g.get('instrument') or '')}"].append(pnl)
         conn.close()
     except Exception:
         pass

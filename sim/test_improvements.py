@@ -722,7 +722,7 @@ def test_champion_revalidation(features):
     g_pass, g_fail = random_genome(), random_genome()
 
     class StubFunnel:
-        def __init__(self, feats):
+        def __init__(self, feats, **kw):
             pass
         def run(self, genome, n_trials_context=None, verbose=True):
             ok = genome.genome_id == g_pass.genome_id
@@ -966,7 +966,7 @@ def test_diversity_invariants(features):
 
             # --- Invariant 4: stratified funnel slots span logics.
             class StubFunnel:
-                def __init__(self, feats): pass
+                def __init__(self, feats, **kw): pass
                 def run(self, genome, n_trials_context=None, verbose=True):
                     return {"all_passed": False, "failed_at": "stub",
                             "genome_id": genome.genome_id}
@@ -1138,7 +1138,7 @@ def test_paper_trader(features):
             pt.SIM = tmp
             pt.DB_PAPER = tmp / "paper.db"
             pt.STATUS_JSON = tmp / "status.json"
-            pt.live_price = lambda size, side: {
+            pt.live_price = lambda size, side, inst="SOL/USDC": {
                 "price": 150.0 if side == "buy" else 151.0,
                 "source": "stub", "mid": 150.0}
             hfe.get_historical_features_1h = lambda pair, **kw: features[:120]
@@ -1277,6 +1277,192 @@ def test_derivatives_features(features):
     check("missing DB fills NaN for all keys",
           all(math.isnan(rows2[0]["features"][k])
               for k in df.DERIV_INDICATORS))
+
+
+def test_stale_external_features():
+    print("\n[20c] stale external feeds become NaN, never carried forward")
+    import layer1.historical_feature_engine_1h as fe
+    t0 = 1_780_000_000_000
+    H = 3_600_000
+    candles = []
+    px = 100.0
+    for i in range(120):
+        px *= 1.001
+        candles.append({"ts": t0 + i * H, "open": px, "high": px * 1.002,
+                        "low": px * 0.998, "close": px, "volume": 1000.0,
+                        "quote_volume": 1000.0 * px, "taker_buy_vol": 500.0})
+    eng = fe.HistoricalFeatureEngine1h("SOL/USDC", symbol_cex="SOLUSDT")
+    eng.add_candles(candles)
+    # External feeds exist only for the first 60 bars, then stop (as the
+    # real source did on 2026-07-31)
+    eng._cex_cache = {t0 + i * H: candles[i]["close"] * 1.0005 for i in range(60)}
+    eng._funding_cache = {t0 + i * 8 * H: 0.0001 for i in range(8)}
+    for attr in ("_cex_keys", "_funding_keys"):
+        if hasattr(eng, attr):
+            delattr(eng, attr)
+    live = eng.compute(58).to_dict()
+    dead = eng.compute(110).to_dict()
+    check("inside coverage: basis real (~5 bps), stress index finite",
+          abs(live["cex_dex_basis_bps"] - 5.0) < 0.5
+          and live["market_stress_index"] == live["market_stress_index"])
+    check("after the feed stops: basis/stress/divergence are NaN",
+          all(dead[k] != dead[k] for k in (
+              "cex_dex_basis_bps", "cex_dex_basis_extreme",
+              "market_stress_index", "funding_basis_divergence")))
+    check("stale funding is NaN, not a carried-forward rate",
+          dead["funding_rate"] != dead["funding_rate"])
+
+
+def test_multi_instrument(features):
+    print("\n[20d] multi-instrument: costs, identity, stamping, ledger, paper")
+    import tempfile as tf
+    import instruments as ins
+    from evolution.genome import StrategyGenome, random_genome, dna_signature
+    from evolution.kill_archive import structure_key
+    from evolution.strategy_log import genome_family
+    from evolution.evaluator import EvolutionEngine
+    from evolution.promotion_funnel import PromotionFunnel
+    import success_criteria as sc
+
+    check("registry: 7 Jupiter-executable instruments, SOL first",
+          len(ins.TRADEABLE) == 7 and ins.TRADEABLE[0] == "SOL/USDC")
+    check("SOL/BTC/ETH/JUP cost = base Jupiter rate",
+          all(ins.fee_rate(i) == sc.FEE_RATE_BASE
+              for i in ("SOL/USDC", "BTC/USDC", "ETH/USDC", "JUP/USDT")))
+    check("AVAX cost reflects its measured spread (1.5x margin)",
+          abs(ins.fee_rate("AVAX/USDT") - 1.5 * 10.9 / 2 / 1e4) < 1e-12)
+
+    random.seed(5)
+    g = random_genome()
+    old_dict = g.to_dict(); old_dict.pop("instrument", None)
+    check("legacy genome dicts load as SOL",
+          StrategyGenome.from_dict(old_dict).instrument == "SOL/USDC")
+    d = StrategyGenome.from_dict({**g.to_dict(), "instrument": "DOGE/USDT"})
+    check("instrument survives to_dict/from_dict",
+          StrategyGenome.from_dict(d.to_dict()).instrument == "DOGE/USDT")
+    check("same rules on two coins = two different strategies (DNA)",
+          dna_signature(g) != dna_signature(d))
+    check("SOL kill/family keys unchanged (no suffix); DOGE keys distinct",
+          "@" not in structure_key(g) and "@" not in genome_family(g)
+          and structure_key(d).endswith("@DOGE/USDT")
+          and genome_family(d).endswith("@DOGE/USDT"))
+
+    # Engine stamps every genome with its instrument and discards results
+    # computed on another market
+    seed = random_genome()
+    seed.backtest_results = {"total_trades": 99, "total_pnl": 1e6}
+    seed.fitness = 1e6
+    eng = EvolutionEngine(features[:700], population_size=12, elite_size=2,
+                          seed_genomes=[seed], n_workers=1,
+                          use_kill_archive=False, instrument="AVAX/USDT")
+    try:
+        check("engine costs come from the instrument",
+              eng.evaluator.fee_rate == ins.fee_rate("AVAX/USDT"))
+        eng.population = [seed]
+        eng.evaluate_population()
+        check("foreign-market seed re-tagged and re-scored",
+              seed.instrument == "AVAX/USDT" and seed.fitness < 1e5)
+    finally:
+        eng.shutdown_pool()
+
+    f_sol = PromotionFunnel(features[:700])
+    f_avax = PromotionFunnel(features[:700], instrument="AVAX/USDT")
+    check("SOL exam fee stress unchanged (base, 5, 10 bps)",
+          f_sol.fee_rates == [sc.FEE_RATE_BASE, sc.FEE_RATE_STRESS_MID,
+                              sc.FEE_RATE_STRESS_HIGH])
+    check("AVAX exam stresses from its own higher base, never below old levels",
+          f_avax.fee_rates[0] == ins.fee_rate("AVAX/USDT")
+          and f_avax.fee_rates[1] >= sc.FEE_RATE_STRESS_MID
+          and f_avax.fee_rates[2] >= sc.FEE_RATE_STRESS_HIGH
+          and f_avax.fee_rates[1] > f_avax.fee_rates[0])
+
+    # Ledger: controls per instrument; scoring touches only its instrument
+    import evolution.vintage_ledger as vl
+    with tf.TemporaryDirectory() as td:
+        old = (vl.LEDGER_DB, vl.RANDOM_COHORT_MIN_GAP_S)
+        try:
+            vl.LEDGER_DB = Path(td) / "ledger.db"
+            vl.RANDOM_COHORT_MIN_GAP_S = 0
+            champ_sol = random_genome()
+            champ_dog = random_genome(); champ_dog.instrument = "DOGE/USDT"
+            vl.freeze_cycle(champ_sol, features[:800], "SOL/USDC")
+            vl.freeze_cycle(champ_dog, features[:800], "DOGE/USDT")
+            c = sqlite3.connect(vl.LEDGER_DB)
+            per = dict(c.execute(
+                "SELECT instrument, COUNT(*) FROM vintages WHERE kind='random' "
+                "GROUP BY instrument").fetchall())
+            c.close()
+            check("each instrument gets its own random control cohort",
+                  per.get("SOL/USDC", 0) > 0 and per.get("DOGE/USDT", 0) > 0)
+            n = vl.score_vintages(features, instrument="DOGE/USDT")
+            c = sqlite3.connect(vl.LEDGER_DB)
+            scored_inst = {r[0] for r in c.execute(
+                "SELECT v.instrument FROM forward_scores s JOIN vintages v "
+                "ON v.id = s.vintage_id").fetchall()}
+            c.close()
+            check(f"scoring DOGE touches only DOGE vintages (n={n})",
+                  n > 0 and scored_inst == {"DOGE/USDT"})
+        finally:
+            vl.LEDGER_DB, vl.RANDOM_COHORT_MIN_GAP_S = old
+
+    # Paper trader: a DOGE champion is enrolled as a DOGE book and priced
+    # with DOGE quotes on DOGE bars
+    import paper_trader as pt
+    import layer1.historical_feature_engine_1h as hfe
+    protected = {
+        "entry_logic": "OR", "genome_id": "multi_doge", "instrument": "DOGE/USDT",
+        "entry_conditions": [{"indicator": "price_roc_1h", "operator": ">",
+                              "threshold": -1e9}],
+        "exit_rules": [{"exit_type": "stop_loss", "value": 0.02},
+                       {"exit_type": "time_stop", "value": 5}],
+        "sizing_method": "fixed", "sizing_base": 0.3, "sizing_max": 0.5}
+    calls = []
+    with tf.TemporaryDirectory() as td:
+        tmp = Path(td)
+        (tmp / "evolution").mkdir()
+        (tmp / "evolution" / "champions.json").write_text(json.dumps({
+            "champions": [{"genome_id": "multi_doge", "genome": protected},
+                          {"genome_id": "not_venue", "genome": {
+                              **protected, "genome_id": "not_venue",
+                              "instrument": "XRP/USDT"}}]}))
+        old_state = (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
+                     pt.live_price, hfe.get_historical_features_1h)
+        try:
+            pt.SIM = tmp
+            pt.DB_PAPER = tmp / "paper.db"
+            pt.STATUS_JSON = tmp / "status.json"
+
+            def _lp(size, side, inst="SOL/USDC"):
+                calls.append(inst)
+                return {"price": 0.2 if side == "buy" else 0.201,
+                        "source": "stub", "mid": 0.2}
+            pairs_loaded = []
+
+            def _feats(pair, **kw):
+                pairs_loaded.append(pair)
+                return features[:120]
+            pt.live_price = _lp
+            hfe.get_historical_features_1h = _feats
+            conn = pt._conn()
+            n = pt.enroll_new(conn, verbose=False)
+            fam = conn.execute("SELECT family FROM enrollments").fetchone()[0]
+            check("DOGE champion enrolled; non-venue XRP champion refused",
+                  n == 1 and fam.endswith("@DOGE/USDT"))
+            conn.execute("UPDATE enrollments SET last_bar_ts=?",
+                         (features[60]["ts"],))
+            conn.commit()
+            pairs_loaded.clear()
+            pt.process_bars(conn, verbose=False)
+            check("book reads DOGE bars and DOGE quotes only",
+                  set(pairs_loaded) == {"DOGE/USDT"} and calls
+                  and set(calls) == {"DOGE/USDT"})
+            row = pt.grade_and_publish(conn)["enrollments"][0]
+            check("status row carries the instrument",
+                  row["instrument"] == "DOGE/USDT")
+            conn.close()
+        finally:
+            (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
+             pt.live_price, hfe.get_historical_features_1h) = old_state
 
 
 def test_forward_feedback(features):
@@ -1534,6 +1720,8 @@ def main():
     test_invention_grammar(features)
     test_paper_trader(features)
     test_derivatives_features(features)
+    test_stale_external_features()
+    test_multi_instrument(features)
     test_forward_feedback(features)
     test_sentinel()
     test_research_agent(features)

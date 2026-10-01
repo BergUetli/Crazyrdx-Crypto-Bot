@@ -34,20 +34,18 @@ from config import DATA_DIR
 
 DB_DERIVS = DATA_DIR / "derivatives.db"
 
-# Pair traded/validated in the sim -> Binance futures symbol
-PAIR_SYMBOL = {
-    "SOL/USDC": "SOLUSDT",
-    "BTC/USDC": "BTCUSDT",
-    "ETH/USDC": "ETHUSDT",
-    # Validation-only majors (candles collected, never traded)
+# Pair -> Binance USDT-M futures symbol: every tradeable instrument from the
+# registry, plus the validation-only majors.
+from instruments import INSTRUMENTS as _INSTRUMENTS
+
+PAIR_SYMBOL = {pair: meta["futures"] for pair, meta in _INSTRUMENTS.items()}
+PAIR_SYMBOL.update({
     "BNB/USDT": "BNBUSDT",
     "XRP/USDT": "XRPUSDT",
-    "DOGE/USDT": "DOGEUSDT",
     "ADA/USDT": "ADAUSDT",
-    "AVAX/USDT": "AVAXUSDT",
     "LINK/USDT": "LINKUSDT",
     "LTC/USDT": "LTCUSDT",
-}
+})
 
 # The indicator names exposed to the GA. Every feature row that passes
 # through attach_derivatives() carries ALL of these keys (value or NaN).

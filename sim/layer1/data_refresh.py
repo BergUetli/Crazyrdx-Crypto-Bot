@@ -24,16 +24,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from layer1.historical_downloader import download_candles, init_historical_db
 from layer1.historical_feature_engine_1h import compute_all_features_1h
 
-PAIRS_1H = ["SOL/USDC", "BTC/USDC", "ETH/USDC"]
-# Validation-only majors (2026-09-17, user decision): the seven other coins
-# whose derivatives we already collect. Candles + features only — they feed
-# cross-asset validation and future cross-sectional work. They are NOT
-# traded and NOT paper books: Jupiter cannot execute most of them, and a
-# $500 book split ten ways would drown in fixed costs. USDT quote because
-# every major has a liquid Binance USDT pair (USDC pairs are patchy).
+from instruments import TRADEABLE
+
+# Tradeable on Jupiter (see instruments.py for the admission measurements)
+PAIRS_1H = list(TRADEABLE)
+# Validation-only majors: candles + features, never traded (Jupiter cannot
+# execute them at a sane cost; a CEX venue would be a separate decision).
 VALIDATION_PAIRS_1H = [
-    "BNB/USDT", "XRP/USDT", "DOGE/USDT", "ADA/USDT",
-    "AVAX/USDT", "LINK/USDT", "LTC/USDT",
+    "BNB/USDT", "XRP/USDT", "ADA/USDT", "LINK/USDT", "LTC/USDT",
 ]
 ALL_PAIRS_1H = PAIRS_1H + VALIDATION_PAIRS_1H
 

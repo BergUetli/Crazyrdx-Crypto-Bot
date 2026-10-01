@@ -1548,7 +1548,7 @@ def paper_trading_card(s: dict) -> str:
         return ""
     bars = p.get("bars") or {}
     rows = "".join(
-        f"<tr><td><b>{e['logic']}</b></td><td class='muted'><code>{e['genome_id']}</code></td>"
+        f"<tr><td><b>{(e.get('instrument') or 'SOL/USDC').split('/')[0]}</b> {e['logic']}</td><td class='muted'><code>{e['genome_id']}</code></td>"
         f"<td>{e['days']:.0f}/{bars.get('min_days', 30)}</td><td>{e['trades']}</td>"
         f"<td class='{'pos' if e['net_pnl'] >= 0 else 'neg'}'>{e['net_pnl']:+.2f}</td>"
         f"<td>{e['max_dd_pct']:.1f}%</td>"
@@ -1564,7 +1564,7 @@ def paper_trading_card(s: dict) -> str:
        and a stop loss (or trailing stop) in the strategy.
        A PASS here is the agreed gate before any live-capital discussion.</p>
     <table>
-      <tr><th>type</th><th>strategy</th><th>days</th><th>trades</th><th>net $</th><th>max DD</th><th>stop?</th><th>verdict</th></tr>
+      <tr><th>coin / type</th><th>strategy</th><th>days</th><th>trades</th><th>net $</th><th>max DD</th><th>stop?</th><th>verdict</th></tr>
       {rows}
     </table>
   </div>"""

@@ -26,7 +26,7 @@ import sqlite3
 import statistics
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from config import DATA_DIR
 
@@ -73,7 +73,20 @@ def _conn() -> sqlite3.Connection:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_vint_kind_day ON vintages(kind, cohort_day)")
     conn.execute("CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v REAL)")
+    # Multi-instrument (2026-10-01): every vintage belongs to one market and
+    # is only ever compared with controls frozen on that same market.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(vintages)")}
+    if "instrument" not in cols:
+        conn.execute("ALTER TABLE vintages ADD COLUMN instrument TEXT "
+                     "NOT NULL DEFAULT 'SOL/USDC'")
+        conn.commit()
     return conn
+
+
+def _meta_key(instrument: str) -> str:
+    # SOL keeps the original key so the skip-when-no-new-candles state carries
+    return ("last_scored_data_ts" if instrument == "SOL/USDC"
+            else f"last_scored_data_ts:{instrument}")
 
 
 def _cohort_day(data_ts_ms: int) -> str:
@@ -89,13 +102,16 @@ def _signature_str(genome) -> str:
 # Freezing
 # ---------------------------------------------------------------------------
 
-def freeze_cycle(best_genome, features: List[Dict[str, Any]]) -> Dict[str, Any]:
+def freeze_cycle(best_genome, features: List[Dict[str, Any]],
+                 instrument: Optional[str] = None) -> Dict[str, Any]:
     """Freeze this cycle's champion (if structurally new) + daily control cohort.
 
-    Returns a small status dict for logging.
+    Controls are per instrument: a DOGE champion is only ever ranked against
+    random strategies frozen on DOGE. Returns a small status dict for logging.
     """
     if not features:
         return {"frozen_champion": False, "frozen_controls": 0}
+    inst = instrument or getattr(best_genome, "instrument", None) or "SOL/USDC"
     frozen_data_ts = int(features[-1]["ts"])
     day = _cohort_day(frozen_data_ts)
     now = time.time()
@@ -118,32 +134,38 @@ def freeze_cycle(best_genome, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         if dup is None and n_today < 12:
             conn.execute(
                 "INSERT INTO vintages (kind, genome_id, genome_json, signature, "
-                "frozen_wall_ts, frozen_data_ts, cohort_day) VALUES (?,?,?,?,?,?,?)",
+                "frozen_wall_ts, frozen_data_ts, cohort_day, instrument) "
+                "VALUES (?,?,?,?,?,?,?,?)",
                 ("champion", best_genome.genome_id, best_genome.to_json(), sig,
-                 now, frozen_data_ts, day),
+                 now, frozen_data_ts, day, inst),
             )
             out["frozen_champion"] = True
 
-        # Daily control cohort: randoms + baselines, at most once per ~day
+        # Daily control cohort per instrument: randoms + baselines
         row = conn.execute(
-            "SELECT MAX(frozen_wall_ts) FROM vintages WHERE kind='random'"
+            "SELECT MAX(frozen_wall_ts) FROM vintages WHERE kind='random' "
+            "AND instrument=?", (inst,)
         ).fetchone()
         last_random = float(row[0] or 0)
         if now - last_random >= RANDOM_COHORT_MIN_GAP_S:
             from evolution.genome import random_genome
             for _ in range(RANDOM_COHORT_SIZE):
                 g = random_genome()
+                g.instrument = inst
                 conn.execute(
                     "INSERT INTO vintages (kind, genome_id, genome_json, signature, "
-                    "frozen_wall_ts, frozen_data_ts, cohort_day) VALUES (?,?,?,?,?,?,?)",
+                    "frozen_wall_ts, frozen_data_ts, cohort_day, instrument) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
                     ("random", g.genome_id, g.to_json(), _signature_str(g),
-                     now, frozen_data_ts, day),
+                     now, frozen_data_ts, day, inst),
                 )
             for kind in ("baseline_bh", "baseline_sma"):
                 conn.execute(
                     "INSERT INTO vintages (kind, genome_id, genome_json, signature, "
-                    "frozen_wall_ts, frozen_data_ts, cohort_day) VALUES (?,?,?,?,?,?,?)",
-                    (kind, kind, None, kind, now, frozen_data_ts, day),
+                    "frozen_wall_ts, frozen_data_ts, cohort_day, instrument) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    (kind, kind, None, f"{kind}{inst}", now, frozen_data_ts,
+                     day, inst),
                 )
             out["frozen_controls"] = RANDOM_COHORT_SIZE + 2
         conn.commit()
@@ -200,8 +222,10 @@ def _baseline_scores(kind: str, fwd: List[Dict[str, Any]]) -> Dict[str, float]:
 # Forward scoring
 # ---------------------------------------------------------------------------
 
-def score_vintages(features: List[Dict[str, Any]], verbose: bool = False) -> int:
-    """Re-score every vintage on candles NEWER than its freeze point.
+def score_vintages(features: List[Dict[str, Any]], verbose: bool = False,
+                   instrument: str = "SOL/USDC") -> int:
+    """Re-score every vintage OF THIS INSTRUMENT on candles newer than its
+    freeze point. `features` must be that instrument's feature rows.
 
     Idempotent: replaces each vintage's forward score with the latest cumulative
     result. Returns the number of vintages scored this call.
@@ -217,18 +241,26 @@ def score_vintages(features: List[Dict[str, Any]], verbose: bool = False) -> int
         # Skip entirely when no new candles arrived since the last scoring
         # run — re-scoring identical windows is pure waste over a month.
         newest_ts = float(features[-1]["ts"])
+        mkey = _meta_key(instrument)
         row = conn.execute(
-            "SELECT v FROM meta WHERE k='last_scored_data_ts'"
+            "SELECT v FROM meta WHERE k=?", (mkey,)
         ).fetchone()
         if row is not None and newest_ts <= float(row[0]):
             return 0
 
-        ev = GenomeEvaluator(features, augment=False)
+        # augment=True: strategies were bred on features WITH the cross-pair
+        # fields (asset/BTC ratios etc.); scoring without them silently
+        # turned those conditions into 0.0 readings (bug until 2026-10-01).
+        from instruments import fee_rate as _inst_fee
+        ev = GenomeEvaluator(features, fee_rate=_inst_fee(instrument),
+                             augment=True)
+        feats = ev.features
         rows = conn.execute(
-            "SELECT id, kind, genome_json, frozen_data_ts FROM vintages"
+            "SELECT id, kind, genome_json, frozen_data_ts FROM vintages "
+            "WHERE instrument=?", (instrument,)
         ).fetchall()
         for vid, kind, gjson, frozen_ts in rows:
-            fwd = [f for f in features if f["ts"] > frozen_ts]
+            fwd = [f for f in feats if f["ts"] > frozen_ts]
             if len(fwd) < MIN_FORWARD_BARS:
                 continue
             try:
@@ -251,8 +283,8 @@ def score_vintages(features: List[Dict[str, Any]], verbose: bool = False) -> int
             )
             scored += 1
         conn.execute(
-            "INSERT OR REPLACE INTO meta (k, v) VALUES ('last_scored_data_ts', ?)",
-            (newest_ts,),
+            "INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)",
+            (mkey, newest_ts),
         )
         conn.commit()
     finally:
@@ -281,7 +313,7 @@ def ledger_summary(max_weeks: int = 26) -> Dict[str, Any]:
     conn = _conn()
     try:
         rows = conn.execute("""
-            SELECT v.kind, v.cohort_day, s.pnl_per_30d
+            SELECT v.kind, v.cohort_day, s.pnl_per_30d, v.instrument
             FROM vintages v JOIN forward_scores s ON s.vintage_id = v.id
         """).fetchall()
     finally:
@@ -289,40 +321,41 @@ def ledger_summary(max_weeks: int = 26) -> Dict[str, Any]:
     if not rows:
         return {"ok": False, "reason": "frozen but no forward data yet"}
 
-    randoms_by_day: Dict[str, List[float]] = {}
-    champs_by_day: Dict[str, List[float]] = {}
-    baselines_by_day: Dict[str, Dict[str, float]] = {}
-    for kind, day, pnl30 in rows:
+    # Keys are (instrument, day): champions only meet same-market controls
+    randoms_by_day: Dict[Tuple[str, str], List[float]] = {}
+    champs_by_day: Dict[Tuple[str, str], List[float]] = {}
+    baselines_by_day: Dict[Tuple[str, str], Dict[str, float]] = {}
+    for kind, day, pnl30, inst in rows:
+        key = (inst or "SOL/USDC", day)
         if kind == "random":
-            randoms_by_day.setdefault(day, []).append(pnl30)
+            randoms_by_day.setdefault(key, []).append(pnl30)
         elif kind == "champion":
-            champs_by_day.setdefault(day, []).append(pnl30)
+            champs_by_day.setdefault(key, []).append(pnl30)
         else:
-            baselines_by_day.setdefault(day, {})[kind] = pnl30
+            baselines_by_day.setdefault(key, {})[kind] = pnl30
 
     def week_of(day: str) -> str:
         t = time.strptime(day, "%Y-%m-%d")
         return time.strftime("%G-W%V", t)
 
-    random_days = sorted(randoms_by_day)
-
-    def nearest_random_day(day: str) -> Optional[str]:
-        if not random_days:
+    def nearest_random_key(inst: str, day: str) -> Optional[Tuple[str, str]]:
+        same = [k for k in randoms_by_day if k[0] == inst]
+        if not same:
             return None
-        return min(random_days, key=lambda d: abs(
-            time.mktime(time.strptime(d, "%Y-%m-%d"))
+        return min(same, key=lambda k: abs(
+            time.mktime(time.strptime(k[1], "%Y-%m-%d"))
             - time.mktime(time.strptime(day, "%Y-%m-%d"))))
 
     weeks: Dict[str, Dict[str, List[float]]] = {}
-    for day, champ_pnls in champs_by_day.items():
-        rd = nearest_random_day(day)
-        cohort = randoms_by_day.get(rd, []) if rd else []
+    for (inst, day), champ_pnls in champs_by_day.items():
+        rk = nearest_random_key(inst, day)
+        cohort = randoms_by_day.get(rk, []) if rk else []
         wk = weeks.setdefault(week_of(day), {"pct": [], "champ": [], "rand": [], "bh": []})
         for p in champ_pnls:
             wk["pct"].append(_percentile_of(p, cohort))
             wk["champ"].append(p)
         wk["rand"].extend(cohort)
-        bh = baselines_by_day.get(rd or day, {}).get("baseline_bh")
+        bh = baselines_by_day.get(rk or (inst, day), {}).get("baseline_bh")
         if bh is not None:
             wk["bh"].append(bh)
 

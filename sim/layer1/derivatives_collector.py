@@ -42,6 +42,8 @@ SYMBOLS = [
     "SOLUSDT", "BTCUSDT", "ETHUSDT",
     "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT",
     "AVAXUSDT", "LINKUSDT", "LTCUSDT",
+    # Tradeable Solana-ecosystem instruments (2026-10-01)
+    "JUPUSDT", "RAYSOLUSDT",
 ]
 
 # metric -> (path, params, timestamp field, value field)

@@ -40,7 +40,7 @@ from success_criteria import (
 
 DB_PAPER = DATA_DIR / "paper_trader.db"
 STATUS_JSON = DATA_DIR / "paper_status.json"
-MAX_CONCURRENT = 8
+MAX_CONCURRENT = 12
 TERM_DAYS = 35  # trade a few days past 30 so the 30d window is fully covered
 MIN_HOLD_BARS = 2
 COOLDOWN_BARS = 4
@@ -76,33 +76,42 @@ def _conn() -> sqlite3.Connection:
 # Market access (quotes only, never orders)
 # ---------------------------------------------------------------------------
 
-def live_price(size_usd: float, side: str) -> Dict[str, Any]:
-    """Real executable price via the Jupiter probe helpers; Binance fallback."""
+def live_price(size_usd: float, side: str,
+               instrument: str = "SOL/USDC") -> Dict[str, Any]:
+    """Real executable Jupiter price for this instrument's token; Binance
+    mid fallback. Quotes only, never orders."""
     try:
         import httpx
-        from layer1.execution_probe import (
-            jupiter_quote, binance_mid, SOL_MINT, USDC_MINT,
-        )
+        from layer1.execution_probe import jupiter_quote
+        from instruments import INSTRUMENTS, USDC_MINT
+        meta = INSTRUMENTS[instrument]
+        mint, dec = meta["mint"], int(meta["decimals"])
         with httpx.Client() as client:
-            mid = binance_mid(client)
+            mid = None
+            try:
+                r = client.get("https://api.binance.com/api/v3/ticker/price",
+                               params={"symbol": meta["binance"]}, timeout=10)
+                r.raise_for_status()
+                mid = float(r.json()["price"])
+            except Exception:
+                mid = None
             if side == "buy":
-                q, src = jupiter_quote(client, USDC_MINT, SOL_MINT,
+                q, src = jupiter_quote(client, USDC_MINT, mint,
                                        int(size_usd * 1e6))
                 if q:
-                    sol = int(q["outAmount"]) / 1e9
-                    if sol > 0:
-                        return {"price": size_usd / sol, "source": f"jupiter:{src}",
-                                "mid": mid}
+                    qty = int(q["outAmount"]) / 10 ** dec
+                    if qty > 0:
+                        return {"price": size_usd / qty,
+                                "source": f"jupiter:{src}", "mid": mid}
             else:
                 if mid:
-                    q, src = jupiter_quote(client, SOL_MINT, USDC_MINT,
-                                           int(size_usd / mid * 1e9))
-                    if q:
+                    qty_in = size_usd / mid
+                    q, src = jupiter_quote(client, mint, USDC_MINT,
+                                           int(qty_in * 10 ** dec))
+                    if q and qty_in > 0:
                         usdc = int(q["outAmount"]) / 1e6
-                        sol_in = size_usd / mid
-                        if sol_in > 0:
-                            return {"price": usdc / sol_in,
-                                    "source": f"jupiter:{src}", "mid": mid}
+                        return {"price": usdc / qty_in,
+                                "source": f"jupiter:{src}", "mid": mid}
             if mid:
                 return {"price": mid, "source": "binance_mid", "mid": mid}
     except Exception:
@@ -129,13 +138,19 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
     # Paper trading starts FORWARD from enrollment: initialize the bar
     # cursor to the newest closed bar so history is never replayed at
     # today's live quote (bug caught on first production run).
-    newest_ts = 0
-    try:
-        from layer1.historical_feature_engine_1h import get_historical_features_1h
-        _f = get_historical_features_1h("SOL/USDC", limit=1)
-        newest_ts = int(_f[-1]["ts"]) if _f else 0
-    except Exception:
-        pass
+    from layer1.historical_feature_engine_1h import get_historical_features_1h
+    from instruments import INSTRUMENTS
+    newest: Dict[str, int] = {}
+
+    def _newest_ts(inst: str) -> int:
+        if inst not in newest:
+            try:
+                _f = get_historical_features_1h(inst, limit=1)
+                newest[inst] = int(_f[-1]["ts"]) if _f else 0
+            except Exception:
+                newest[inst] = 0
+        return newest[inst]
+
     added = 0
     for c in champs:
         if n_active + added >= MAX_CONCURRENT:
@@ -144,8 +159,14 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
         from success_criteria import has_protective_exit
         if not has_protective_exit(g):
             continue  # user-approved rule: no protection, no paper slot
+        inst = g.get("instrument") or "SOL/USDC"
+        if inst not in INSTRUMENTS:
+            continue  # not executable on our venue
+        newest_ts = _newest_ts(inst)
+        if not newest_ts:
+            continue
         fam = family_key(g.get("entry_logic") or "?", [
-            x.get("indicator") for x in g.get("entry_conditions", [])])
+            x.get("indicator") for x in g.get("entry_conditions", [])], inst)
         try:
             conn.execute(
                 "INSERT INTO enrollments (genome_id, family, genome_json, "
@@ -154,7 +175,7 @@ def enroll_new(conn: sqlite3.Connection, verbose: bool = True) -> int:
                  BOOK_USD, newest_ts))
             added += 1
             if verbose:
-                print(f"  [paper] enrolled {g.get('entry_logic')} "
+                print(f"  [paper] enrolled {inst} {g.get('entry_logic')} "
                       f"{str(c.get('genome_id'))[:28]} (30d clock started)")
         except sqlite3.IntegrityError:
             continue  # family already enrolled (ever) — one shot per family
@@ -173,17 +194,29 @@ def process_bars(conn: sqlite3.Connection, verbose: bool = True) -> Dict[str, in
     from evolution.evaluator import GenomeEvaluator
     from layer1.historical_feature_engine_1h import get_historical_features_1h
 
-    features = get_historical_features_1h("SOL/USDC", limit=250)
-    if len(features) < 60:
-        return {"bars": 0, "entries": 0, "exits": 0}
     stats = {"bars": 0, "entries": 0, "exits": 0}
-    ev = GenomeEvaluator(features, augment=True)
-    feats = ev.features
+    # Each book reads ITS OWN market's bars (augmented like the search saw)
+    market: Dict[str, Any] = {}
+
+    def _market(inst: str):
+        if inst not in market:
+            features = get_historical_features_1h(inst, limit=250)
+            if len(features) < 60:
+                market[inst] = None
+            else:
+                ev_ = GenomeEvaluator(features, augment=True)
+                market[inst] = (ev_, ev_.features)
+        return market[inst]
 
     for (eid, gjson, cash, last_bar, cooldown) in conn.execute(
         "SELECT id, genome_json, cash, last_bar_ts, cooldown_until_ts "
         "FROM enrollments WHERE status='active'").fetchall():
         genome = StrategyGenome.from_dict(json.loads(gjson))
+        inst = genome.instrument or "SOL/USDC"
+        m = _market(inst)
+        if m is None:
+            continue
+        ev, feats = m
         signal_fn = None
         try:
             from layer1.fast_signals import build_array_signal_fn
@@ -224,7 +257,7 @@ def process_bars(conn: sqlite3.Connection, verbose: bool = True) -> Dict[str, in
                         exit_px, exit_reason = min(op, best * (1 - trail)), "trailing"
                     elif bars_held >= max_hold:
                         # market exit at REAL quote
-                        lq = live_price(size_usd, "sell")
+                        lq = live_price(size_usd, "sell", inst)
                         exit_px = lq["price"] or px
                         exit_reason = f"time_stop({lq['source']})"
                 best = max(best, hi)
@@ -254,7 +287,7 @@ def process_bars(conn: sqlite3.Connection, verbose: bool = True) -> Dict[str, in
                 if sig and sig[0] == "long" and sig[1] >= 0.5:
                     size_usd = min(max(sig[2], 0.0), 0.5) * cash
                     if size_usd >= 5.0:
-                        lq = live_price(size_usd, "buy")
+                        lq = live_price(size_usd, "buy", inst)
                         if lq["price"]:
                             entry_px = lq["price"]
                             size_after_fee = size_usd - FIXED_COST_PER_SIDE_USD
@@ -269,7 +302,7 @@ def process_bars(conn: sqlite3.Connection, verbose: bool = True) -> Dict[str, in
                                    size_after_fee / entry_px, entry_px)
                             stats["entries"] += 1
                             if verbose:
-                                print(f"  [paper] #{eid} ENTER ${size_usd:.0f} "
+                                print(f"  [paper] #{eid} {inst} ENTER ${size_usd:.0f} "
                                       f"@ {entry_px:.2f} ({lq['source']})")
 
             # equity snapshot at each bar
@@ -318,6 +351,7 @@ def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
                              (f"completed_{verdict.lower()}", eid))
         logic = gdict.get("entry_logic", "?")
         out.append({"id": eid, "genome_id": (gid or "")[:30], "logic": logic,
+                    "instrument": gdict.get("instrument") or "SOL/USDC",
                     "days": round(days, 1), "trades": n_tr,
                     "net_pnl": round(net, 2), "max_dd_pct": round(dd * 100, 1),
                     "verdict": verdict, "status": status,

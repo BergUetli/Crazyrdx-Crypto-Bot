@@ -2,6 +2,62 @@
 
 All notable changes to this project are documented here.
 
+## 2026-10-01 — Multi-instrument search + paper trading; stale-feature fix
+
+User decision: stop focusing on SOL only. Implemented across the stack.
+
+**Instruments** (`sim/instruments.py`, new registry). Admission rule: must be
+executable on our venue (Jupiter) at a realistic cost. Measured $250 round
+trips vs Binance mid: SOL 1.2 bps, BTC (cbBTC) 0.4, ETH (Portal) ~0, JUP ~0,
+RAY 4.8, DOGE 6.1, AVAX 10.9 -> all 7 tradeable. Rejected for Jupiter:
+JTO 46, PYTH 21, RENDER 53, LINK 44, BNB 27 bps (an edge would have to beat
+that every round trip). XRP/ADA/LTC/LINK/BNB stay validation-only data until
+a centralized-exchange venue is decided. Per-instrument per-side cost =
+max(Jupiter base 2.2 bps, 1.5 x measured), e.g. AVAX 8.2 bps.
+
+- **Genome** carries `instrument`; legacy dicts load as SOL. DNA signature,
+  kill-archive key, family keys (strategy log, funnel, forward feedback,
+  champion board) include it; SOL keys keep their old form so all existing
+  archives, graduations and logs stay valid.
+- **Runner** rotates instruments cycle by cycle (position persisted in
+  `evolution/instrument_rotation.json`), loading that market's features.
+  The engine stamps every genome with the cycle's instrument at the single
+  evaluation choke point; seeds bred on another market are re-scored, so
+  champion ideas transfer across coins but never with stale results.
+- **Exam**: costs per instrument; fee-stress levels = max(old absolute
+  level, 2x/4x the instrument's base) so no gate got weaker. Champion
+  re-checks run on each champion's own market. Advisory cross-asset check
+  uses the two majors other than the strategy's own coin.
+- **Champion board**: 12 slots (was 8), <=2 per logic, <=4 per instrument.
+- **Vintage ledger**: `instrument` column; daily random/baseline controls
+  per instrument; champions ranked only against same-market randoms.
+  BUG FIXED: ledger scoring used features WITHOUT the cross-pair fields the
+  strategies were bred on (augment=False), so conditions on asset/BTC ratio
+  features read 0.0. All vintages re-score with correct features.
+- **Paper trader**: each book trades its own coin at real Jupiter quotes
+  for that token (registry mint/decimals), on its own coin's bars;
+  champions on non-venue instruments are refused; 12 concurrent books.
+- **Data**: hourly candles+features for 7 tradeable + 5 validation pairs;
+  derivatives collection adds JUPUSDT and RAYSOLUSDT (Raydium's live perp).
+- **Execution probe** measures all 7 instruments hourly (`instrument`
+  column), so each cost assumption is checked against real quotes.
+- **Dashboard** paper card shows the coin per book.
+
+**Data-integrity fix: stale external features.** `external_features.db`
+(CEX price + old funding feed) stopped updating 2026-07-31 and the engine
+carried the last July values forward forever. Since Aug 1
+`cex_dex_basis_bps` compared today's price to a July price (-3,767 bps even
+for SOL) and `market_stress_index` = (volatility + 1)/3: a step from ~0.12
+to ~0.45 on Aug 1, i.e. an "after July" switch. Every OOS window since then
+lies after the break, so a condition on it could pass the exam on a date
+artifact. It was a key condition of the top OR/KOFN paper books. Now
+funding older than 9h and CEX prices older than 2h are NaN, and
+basis/stress/divergence are NaN unless every input is live; NaN never fires
+a condition. Per-pair CEX symbol (no more SOL data inside BTC features).
+All feature rows recomputed in place (INSERT OR REPLACE, no empty window).
+
+Tests: `[20c]` stale feeds, `[20d]` multi-instrument (21 checks).
+
 ## 2026-09-30 — Derivatives DB to WAL; silent-NaN path made loud
 
 - `derivatives.db` switched to WAL (+ synchronous=NORMAL) in the collector.

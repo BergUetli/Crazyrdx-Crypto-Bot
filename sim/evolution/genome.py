@@ -231,6 +231,7 @@ def dna_signature(genome: "StrategyGenome") -> Tuple:
         round(float(genome.sizing_base), 6),
         round(float(genome.sizing_max), 6),
         exits,
+        getattr(genome, "instrument", "SOL/USDC") or "SOL/USDC",
     )
 
 
@@ -280,6 +281,9 @@ class StrategyGenome:
     # Exit
     exit_rules: List[ExitRule] = field(default_factory=list)
     
+    # Instrument this strategy trades (stamped by the engine per cycle)
+    instrument: str = "SOL/USDC"
+
     # Metadata
     genome_id: str = ""
     generation: int = 0
@@ -309,6 +313,7 @@ class StrategyGenome:
             sizing_base=data.get("sizing_base", 0.25),
             sizing_max=data.get("sizing_max", 0.50),
             exit_rules=exit_rules,
+            instrument=data.get("instrument") or "SOL/USDC",
             genome_id=data.get("genome_id", ""),
             generation=data.get("generation", 0),
             parent_ids=data.get("parent_ids", []),

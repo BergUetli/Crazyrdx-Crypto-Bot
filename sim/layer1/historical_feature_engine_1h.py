@@ -221,24 +221,35 @@ class HistoricalFeatureEngine1h:
         except Exception:
             pass  # Tables may not exist yet; features will default to 0.0
 
+    # External feeds older than this are "no data" (NaN), never carried
+    # forward. The external_features.db source stopped updating 2026-07-31;
+    # carrying a July price forward turned cex_dex_basis/market_stress_index
+    # into an "after July" switch the search could fit (the OOS window lies
+    # entirely after the break). NaN never fires a condition.
+    FUNDING_MAX_AGE_MS = 9 * 3600 * 1000   # funding prints every 8h
+    CEX_MAX_AGE_MS = 2 * 3600 * 1000
+
+    def _lookup(self, cache: Dict[int, float], keys_attr: str, ts: int,
+                max_age_ms: int) -> float:
+        import bisect
+        keys = getattr(self, keys_attr, None)
+        if keys is None:
+            keys = sorted(cache)
+            setattr(self, keys_attr, keys)
+        i = bisect.bisect_right(keys, ts) - 1
+        if i < 0 or ts - keys[i] > max_age_ms:
+            return math.nan
+        return cache[keys[i]]
+
     def _funding_at(self, ts: int) -> float:
-        """Most recent funding rate at or before ts."""
-        best = 0.0
-        for fts, rate in self._funding_cache.items():
-            if fts <= ts and (best == 0.0 or fts > self._last_funding_ts):
-                best = rate
-                self._last_funding_ts = fts
-        return best if best else 0.0
+        """Most recent funding rate at or before ts; NaN if stale/missing."""
+        return self._lookup(self._funding_cache, "_funding_keys", ts,
+                            self.FUNDING_MAX_AGE_MS)
 
     def _cex_price_at(self, ts: int) -> float:
-        """Most recent CEX price at or before ts."""
-        best_ts = 0
-        best_price = 0.0
-        for cts, price in self._cex_cache.items():
-            if cts <= ts and cts >= best_ts:
-                best_ts = cts
-                best_price = price
-        return best_price
+        """Most recent CEX price at or before ts; NaN if stale/missing."""
+        return self._lookup(self._cex_cache, "_cex_keys", ts,
+                            self.CEX_MAX_AGE_MS)
 
     def add_candles(self, candles: List[Dict[str, Any]]):
         """Add a batch of candles."""
@@ -463,37 +474,35 @@ class HistoricalFeatureEngine1h:
 
         # === External market features ===
         # Funding rates
+        nan = math.nan
         funding_now = self._funding_at(ts)
         # Average over last ~24h (3 funding periods at 8h each)
         funding_vals = [self._funding_at(ts - i * 28800000) for i in range(3)]
-        funding_avg = sum(funding_vals) / len(funding_vals) if funding_vals else 0.0
-        funding_roc = funding_now - (funding_vals[-1] if funding_vals else 0.0)
-        funding_extreme = 1.0 if abs(funding_now) > 2 * abs(funding_avg) and abs(funding_avg) > 0 else 0.0
-
-        # CEX-DEX basis
-        cex_price = self._cex_price_at(ts)
-        dex_price = c["close"]
-        if cex_price > 0 and dex_price > 0:
-            basis_bps = (cex_price - dex_price) / dex_price * 10000
+        if any(v != v for v in funding_vals):
+            funding_avg = funding_roc = funding_extreme = nan
         else:
-            basis_bps = 0.0
+            funding_avg = sum(funding_vals) / len(funding_vals)
+            funding_roc = funding_now - funding_vals[-1]
+            funding_extreme = (1.0 if abs(funding_now) > 2 * abs(funding_avg)
+                               and abs(funding_avg) > 0 else 0.0)
 
-        # Basis ROC
-        basis_4h_ago = 0.0
-        basis_1d_ago = 0.0
+        def _basis(cex: float, dex: float) -> float:
+            if cex == cex and cex > 0 and dex > 0:
+                return (cex - dex) / dex * 10000
+            return nan
+
+        # CEX-DEX basis (NaN when the CEX feed is stale or missing)
+        basis_bps = _basis(self._cex_price_at(ts), c["close"])
+        basis_4h_ago = basis_1d_ago = nan
         if idx >= 4:
-            cex_4h = self._cex_price_at(self.candles[idx-4]["ts"])
-            dex_4h = self.candles[idx-4]["close"]
-            if cex_4h > 0 and dex_4h > 0:
-                basis_4h_ago = (cex_4h - dex_4h) / dex_4h * 10000
+            basis_4h_ago = _basis(self._cex_price_at(self.candles[idx-4]["ts"]),
+                                  self.candles[idx-4]["close"])
         if idx >= 24:
-            cex_1d = self._cex_price_at(self.candles[idx-24]["ts"])
-            dex_1d = self.candles[idx-24]["close"]
-            if cex_1d > 0 and dex_1d > 0:
-                basis_1d_ago = (cex_1d - dex_1d) / dex_1d * 10000
-        basis_roc_4h = basis_bps - basis_4h_ago
+            basis_1d_ago = _basis(self._cex_price_at(self.candles[idx-24]["ts"]),
+                                  self.candles[idx-24]["close"])
+        basis_roc_4h = basis_bps - basis_4h_ago   # NaN propagates
         basis_roc_1d = basis_bps - basis_1d_ago
-        basis_extreme = 1.0 if abs(basis_bps) > 50 else 0.0
+        basis_extreme = (1.0 if abs(basis_bps) > 50 else 0.0) if basis_bps == basis_bps else nan
 
         # Taker flow imbalance (derived from existing taker data)
         taker_sell = c["volume"] - taker_buy
@@ -531,17 +540,23 @@ class HistoricalFeatureEngine1h:
         dex_liquidity_ratio = 1.0
 
         # Funding-basis divergence (they should move together; divergence = stress)
-        funding_basis_divergence = 0.0
-        if funding_now > 0 and basis_bps < 0:
-            funding_basis_divergence = 1.0
-        elif funding_now < 0 and basis_bps > 0:
-            funding_basis_divergence = 1.0
+        if funding_now != funding_now or basis_bps != basis_bps:
+            funding_basis_divergence = nan
+        else:
+            funding_basis_divergence = 0.0
+            if funding_now > 0 and basis_bps < 0:
+                funding_basis_divergence = 1.0
+            elif funding_now < 0 and basis_bps > 0:
+                funding_basis_divergence = 1.0
 
-        # Market stress index (composite)
-        vol_norm = min(vol(24) / 200.0, 1.0) if vol(24) > 0 else 0.0
-        fund_norm = min(abs(funding_now) / 0.001, 1.0) if funding_now != 0 else 0.0
-        basis_norm = min(abs(basis_bps) / 50.0, 1.0) if basis_bps != 0 else 0.0
-        market_stress = (vol_norm + fund_norm + basis_norm) / 3.0
+        # Market stress index (composite) — NaN unless every input is live
+        if funding_now != funding_now or basis_bps != basis_bps:
+            market_stress = nan
+        else:
+            vol_norm = min(vol(24) / 200.0, 1.0) if vol(24) > 0 else 0.0
+            fund_norm = min(abs(funding_now) / 0.001, 1.0) if funding_now != 0 else 0.0
+            basis_norm = min(abs(basis_bps) / 50.0, 1.0) if basis_bps != 0 else 0.0
+            market_stress = (vol_norm + fund_norm + basis_norm) / 3.0
 
         return HistoricalFeatureVector1h(
             ts=ts,
@@ -629,15 +644,20 @@ class HistoricalFeatureEngine1h:
         )
 
 
-def compute_all_features_1h(pair: str, save_to_db: bool = True) -> int:
-    """Compute 1h features for all candles of a pair."""
+def compute_all_features_1h(pair: str, save_to_db: bool = True,
+                            replace: bool = False) -> int:
+    """Compute 1h features for all candles of a pair.
+
+    replace=True rewrites existing rows in place (INSERT OR REPLACE), used
+    when a feature definition changes; readers never see an empty table."""
     init_hist_features_1h_db()
 
     candles = get_candles(pair, interval="1h")
     if len(candles) < 51:
         return 0
 
-    engine = HistoricalFeatureEngine1h(pair)
+    base = pair.split("/")[0]
+    engine = HistoricalFeatureEngine1h(pair, symbol_cex=f"{base}USDT")
     engine.add_candles(candles)
 
     conn = sqlite3.connect(str(DB_HIST_FEATURES_1H))
@@ -650,8 +670,9 @@ def compute_all_features_1h(pair: str, save_to_db: bool = True) -> int:
 
         if save_to_db:
             try:
-                conn.execute("""
-                    INSERT OR IGNORE INTO features_1h (ts, pair, features_json)
+                verb = "INSERT OR REPLACE" if replace else "INSERT OR IGNORE"
+                conn.execute(f"""
+                    {verb} INTO features_1h (ts, pair, features_json)
                     VALUES (?, ?, ?)
                 """, (fv.ts, fv.pair, fv.to_json()))
                 count += 1

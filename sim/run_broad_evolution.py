@@ -62,6 +62,26 @@ def prune_dir(path: Path, pattern: str, keep: int) -> int:
 
 
 DIVERSITY_STATE = SIM / "evolution" / "diversity_state.json"
+ROTATION_STATE = SIM / "evolution" / "instrument_rotation.json"
+MIN_FEATURE_ROWS = 1000  # below this an instrument is skipped for the cycle
+
+
+def next_instrument() -> str:
+    """Round-robin over tradeable instruments; position survives restarts
+    (a cycle counter would reset to SOL on every redeploy)."""
+    from instruments import TRADEABLE
+    idx = -1
+    try:
+        idx = int(json.loads(ROTATION_STATE.read_text()).get("idx", -1))
+    except Exception:
+        pass
+    idx = (idx + 1) % len(TRADEABLE)
+    try:
+        ROTATION_STATE.write_text(json.dumps(
+            {"idx": idx, "instrument": TRADEABLE[idx], "ts": time.time()}))
+    except Exception:
+        pass
+    return TRADEABLE[idx]
 
 
 def load_streak_tax() -> dict:
@@ -206,15 +226,20 @@ def main():
             break
 
         cycle += 1
-        # Reload features each cycle so a long-running process picks up new
-        # candles (also feeds the vintage ledger true forward data).
-        if cycle > 1:
-            try:
-                fresh = get_historical_features_1h("SOL/USDC", limit=4000)
-                if len(fresh) >= len(features) and fresh[-1]["ts"] >= features[-1]["ts"]:
-                    features = fresh
-            except Exception as e:
-                print(f"  Feature reload failed (keeping previous): {e}")
+        # Multi-instrument: each cycle searches the next tradeable market,
+        # loading that market's freshest features (also feeds the vintage
+        # ledger true forward data for that instrument).
+        instrument = next_instrument()
+        try:
+            features = get_historical_features_1h(instrument, limit=4000)
+        except Exception as e:
+            print(f"  Feature load failed for {instrument}: {e} — skipping")
+            time.sleep(5)
+            continue
+        if len(features) < MIN_FEATURE_ROWS:
+            print(f"  {instrument}: only {len(features)} feature rows — skipping")
+            time.sleep(5)
+            continue
 
         # Unattended safety: warn loudly when market data stops arriving.
         # The search still runs, but it learns nothing new and the forward
@@ -222,14 +247,14 @@ def main():
         data_age_h = (time.time() - features[-1]["ts"] / 1000.0) / 3600.0
         if data_age_h > 6:
             print(
-                f"  WARNING: newest candle is {data_age_h:.1f}h old — "
+                f"  WARNING: newest {instrument} candle is {data_age_h:.1f}h old — "
                 f"the data pipeline may be dead. Check the downloader job."
             )
 
         # A transient error (sqlite lock, network blip, one bad genome) must
         # cost one cycle, never the whole unattended month.
         try:
-            run_one_cycle(cycle, features)
+            run_one_cycle(cycle, features, instrument)
         except KeyboardInterrupt:
             raise
         except Exception as e:
@@ -241,8 +266,10 @@ def main():
         time.sleep(5)
 
 
-def run_one_cycle(cycle: int, features: list) -> None:
-    """One full search cycle: evolve, funnel, persist, ledger, prune."""
+def run_one_cycle(cycle: int, features: list,
+                  instrument: str = "SOL/USDC") -> None:
+    """One full search cycle on one instrument: evolve, funnel, persist,
+    ledger, prune."""
     engine = None
     try:
         arch = get_archive()
@@ -252,7 +279,7 @@ def run_one_cycle(cycle: int, features: list) -> None:
             "generation": 0,
             "kill_archive_n": arch.size,
         })
-        print(f"\n=== Cycle {cycle} ===")
+        print(f"\n=== Cycle {cycle} [{instrument}] ===")
         print(f"  Kill archive size: {arch.size}")
 
         seeds = load_seed_genomes()
@@ -268,6 +295,7 @@ def run_one_cycle(cycle: int, features: list) -> None:
             use_kill_archive=True,
             seed_genomes=seeds,
             extra_family_tax=load_streak_tax(),
+            instrument=instrument,
         )
         engine.cycle_tag = cycle
         if engine._extra_family_tax:
@@ -313,6 +341,7 @@ def run_one_cycle(cycle: int, features: list) -> None:
             "timestamp": ts,
             "cycle": cycle,
             "mode": "broad_explore_oos_plus_funnel_killarch",
+            "instrument": instrument,
             "generations_run": engine.generation,
             "best_fitness": best.fitness,
             "best_genome": best.to_dict(),
@@ -364,8 +393,9 @@ def run_one_cycle(cycle: int, features: list) -> None:
         # freeze point. Failures here must never kill the search loop.
         try:
             from evolution.vintage_ledger import freeze_cycle, score_vintages
-            vstat = freeze_cycle(best, features)
-            n_scored = score_vintages(features, verbose=True)
+            vstat = freeze_cycle(best, features, instrument)
+            n_scored = score_vintages(features, verbose=True,
+                                      instrument=instrument)
             print(
                 f"  [vintage] champion_frozen={vstat['frozen_champion']} "
                 f"controls_frozen={vstat['frozen_controls']} scored={n_scored}"
@@ -401,7 +431,7 @@ def run_one_cycle(cycle: int, features: list) -> None:
             }
         )
         print(
-            f"  fitness={best.fitness:.1f} gens={engine.generation} "
+            f"  [{instrument}] fitness={best.fitness:.1f} gens={engine.generation} "
             f"trades={bt.get('total_trades')} logic={best.entry_logic} "
             f"promoted={n_promoted}/{len(funnel_results)} trials={total_trials} "
             f"kill_arch={get_archive().size} kill_hits={getattr(engine, 'kill_hits', 0)}"

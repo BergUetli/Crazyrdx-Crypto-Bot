@@ -60,6 +60,11 @@ def init_db() -> sqlite3.Connection:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_probe_ts ON quotes(ts)")
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(quotes)")}
+    if "instrument" not in cols:
+        conn.execute("ALTER TABLE quotes ADD COLUMN instrument TEXT "
+                     "NOT NULL DEFAULT 'SOL/USDC'")
+        conn.commit()
     return conn
 
 
@@ -94,46 +99,67 @@ def jupiter_quote(
     return None, last_err
 
 
-def probe_once(client: httpx.Client, conn: sqlite3.Connection) -> Dict[str, Any]:
-    """One measurement pass. Returns a printable summary dict."""
-    now = time.time()
-    mid = binance_mid(client)
-    results = []
-    for size in SIZES_USD:
-        # BUY: spend `size` USDC, receive SOL
-        q, src = jupiter_quote(client, USDC_MINT, SOL_MINT, int(size * 1e6))
-        if q and mid:
-            sol_out = int(q["outAmount"]) / 1e9
-            eff = size / sol_out if sol_out > 0 else None
-            cost = (eff / mid - 1.0) * 1e4 if eff else None
-            row = (now, "buy_sol", size, mid, eff, cost,
-                   float(q.get("priceImpactPct") or 0),
-                   len(q.get("routePlan") or []), src, None)
-        else:
-            row = (now, "buy_sol", size, mid, None, None, None, None, None, src)
-        conn.execute("INSERT INTO quotes VALUES (?,?,?,?,?,?,?,?,?,?)", row)
-        results.append(row)
+def _binance_mid_sym(client: httpx.Client, symbol: str) -> Optional[float]:
+    try:
+        r = client.get("https://api.binance.com/api/v3/ticker/price",
+                       params={"symbol": symbol}, timeout=10)
+        r.raise_for_status()
+        return float(r.json()["price"])
+    except Exception:
+        return None
 
-        # SELL: sell size-worth of SOL, receive USDC
-        if mid:
-            sol_in = size / mid
-            q, src = jupiter_quote(client, SOL_MINT, USDC_MINT, int(sol_in * 1e9))
-            if q:
-                usdc_out = int(q["outAmount"]) / 1e6
-                eff = usdc_out / sol_in if sol_in > 0 else None
-                cost = (1.0 - eff / mid) * 1e4 if eff else None
-                row = (now, "sell_sol", size, mid, eff, cost,
+
+def probe_once(client: httpx.Client, conn: sqlite3.Connection) -> Dict[str, Any]:
+    """One measurement pass over every tradeable instrument: real Jupiter
+    buy and sell quotes at each size vs the Binance mid. Keeps each
+    instrument's fee assumption (instruments.py) honest over time."""
+    from instruments import INSTRUMENTS
+    now = time.time()
+    results = []
+    per_inst: Dict[str, list] = {}
+    for inst, meta in INSTRUMENTS.items():
+        mint, dec = meta["mint"], 10 ** int(meta["decimals"])
+        legacy = inst == "SOL/USDC"  # SOL rows keep their original side names
+        buy_side, sell_side = ("buy_sol", "sell_sol") if legacy else ("buy", "sell")
+        mid = _binance_mid_sym(client, meta["binance"])
+        for size in SIZES_USD:
+            q, src = jupiter_quote(client, USDC_MINT, mint, int(size * 1e6))
+            if q and mid:
+                qty = int(q["outAmount"]) / dec
+                eff = size / qty if qty > 0 else None
+                cost = (eff / mid - 1.0) * 1e4 if eff else None
+                row = (now, buy_side, size, mid, eff, cost,
                        float(q.get("priceImpactPct") or 0),
-                       len(q.get("routePlan") or []), src, None)
+                       len(q.get("routePlan") or []), src, None, inst)
             else:
-                row = (now, "sell_sol", size, mid, None, None, None, None, None, src)
-            conn.execute("INSERT INTO quotes VALUES (?,?,?,?,?,?,?,?,?,?)", row)
+                row = (now, buy_side, size, mid, None, None, None, None,
+                       None, src, inst)
+            conn.execute("INSERT INTO quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)", row)
             results.append(row)
+            if mid:
+                qty_in = size / mid
+                q, src = jupiter_quote(client, mint, USDC_MINT, int(qty_in * dec))
+                if q:
+                    usdc_out = int(q["outAmount"]) / 1e6
+                    eff = usdc_out / qty_in if qty_in > 0 else None
+                    cost = (1.0 - eff / mid) * 1e4 if eff else None
+                    row = (now, sell_side, size, mid, eff, cost,
+                           float(q.get("priceImpactPct") or 0),
+                           len(q.get("routePlan") or []), src, None, inst)
+                else:
+                    row = (now, sell_side, size, mid, None, None, None, None,
+                           None, src, inst)
+                conn.execute("INSERT INTO quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                             row)
+                results.append(row)
+        per_inst[inst] = [r[5] for r in results if r[10] == inst and r[5] is not None]
+        time.sleep(0.3)  # stay polite to the keyless quote tier
     conn.commit()
     ok = [r for r in results if r[5] is not None]
     return {
         "n": len(results), "ok": len(ok),
-        "mid": mid,
+        "per_instrument_bps": {k: round(sum(v) / len(v), 2)
+                               for k, v in per_inst.items() if v},
         "avg_cost_bps": (sum(r[5] for r in ok) / len(ok)) if ok else None,
     }
 
@@ -145,11 +171,17 @@ def summary(days: float = 7.0) -> Dict[str, Any]:
         cut = time.time() - days * 86400
         rows = conn.execute(
             "SELECT size_usd, AVG(cost_bps), COUNT(*) FROM quotes "
-            "WHERE ts > ? AND cost_bps IS NOT NULL GROUP BY size_usd", (cut,)
+            "WHERE ts > ? AND cost_bps IS NOT NULL AND instrument='SOL/USDC' "
+            "GROUP BY size_usd", (cut,)
+        ).fetchall()
+        inst_rows = conn.execute(
+            "SELECT instrument, AVG(cost_bps), COUNT(*) FROM quotes "
+            "WHERE ts > ? AND cost_bps IS NOT NULL GROUP BY instrument", (cut,)
         ).fetchall()
         conn.close()
         return {
             "per_size_bps": {r[0]: round(r[1], 2) for r in rows},
+            "per_instrument_bps": {r[0]: round(r[1], 2) for r in inst_rows},
             "n": sum(r[2] for r in rows),
             "sim_assumption_bps_per_side": "2.2 + fixed $0.03 + MEV model",
         }
@@ -162,10 +194,8 @@ def main() -> int:
     try:
         with httpx.Client() as client:
             s = probe_once(client, conn)
-        print(f"execution probe: {s['ok']}/{s['n']} quotes ok, "
-              f"mid={s['mid']}, avg one-side cost="
-              f"{s['avg_cost_bps']:.2f}bps" if s['avg_cost_bps'] is not None
-              else f"execution probe: {s['ok']}/{s['n']} quotes ok (no costs computed)")
+        print(f"execution probe: {s['ok']}/{s['n']} quotes ok, one-side "
+              f"cost bps by instrument: {s['per_instrument_bps']}")
         return 0 if s["ok"] else 1
     finally:
         conn.close()

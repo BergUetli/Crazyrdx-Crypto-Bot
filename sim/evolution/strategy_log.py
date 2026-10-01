@@ -25,15 +25,20 @@ LOG_DB = DATA_DIR / "strategy_log.db"
 _WRITE_WARNED = False
 
 
-def family_key(logic: str, indicators) -> str:
-    """Coarse family identity: logic + sorted indicator set."""
-    return f"{logic}|{','.join(sorted(set(indicators)))}"
+def family_key(logic: str, indicators, instrument: str = "") -> str:
+    """Coarse family identity: logic + sorted indicator set (+ instrument
+    suffix for non-SOL instruments, so per-instrument families are distinct
+    while every pre-existing SOL key is unchanged)."""
+    from instruments import suffix
+    return (f"{logic}|{','.join(sorted(set(indicators)))}"
+            f"{suffix(instrument)}")
 
 
 def genome_family(genome) -> str:
     return family_key(
         genome.entry_logic,
         [c.indicator for c in (genome.entry_conditions or [])],
+        getattr(genome, "instrument", ""),
     )
 
 

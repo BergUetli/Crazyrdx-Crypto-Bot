@@ -65,6 +65,10 @@ TRIAL_COUNT_PATH = EVO_DIR / "trial_count.json"
 CHAMPIONS_PATH = EVO_DIR / "champions.json"
 GRADUATED_PATH = EVO_DIR / "graduated_families.json"
 FUNNEL_DIR = EVO_DIR / "funnel_results"
+# Champion board capacity (multi-instrument since 2026-10-01): diversity by
+# logic AND by instrument so no single market monopolizes paper slots.
+BOARD_MAX = 12
+BOARD_MAX_PER_INSTRUMENT = 4
 FUNNEL_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -73,7 +77,9 @@ def _family_str(g: Dict[str, Any]) -> str:
     inds = sorted({
         str(c.get("indicator") or "?") for c in (g.get("entry_conditions") or [])
     })
-    return f"{g.get('entry_logic') or '?'}|{','.join(inds)}"
+    from instruments import suffix
+    return (f"{g.get('entry_logic') or '?'}|{','.join(inds)}"
+            f"{suffix(g.get('instrument') or '')}")
 
 
 def record_graduated(genome_dict: Dict[str, Any]) -> None:
@@ -139,6 +145,7 @@ def _genome_signature(genome: StrategyGenome) -> Tuple:
         genome.sizing_method,
         round(float(genome.sizing_base), 4),
         exits,
+        getattr(genome, "instrument", "SOL/USDC") or "SOL/USDC",
     )
 
 
@@ -246,15 +253,24 @@ class PromotionFunnel:
         wf_folds: int = LAB_WF_FOLDS,
         wf_majority: float = LAB_WF_MAJORITY,
         fee_rates: Optional[List[float]] = None,
-        base_fee: float = FEE_RATE_BASE,
+        base_fee: Optional[float] = None,
+        instrument: str = "SOL/USDC",
     ):
+        from instruments import fee_rate as _inst_fee
+        self.instrument = instrument or "SOL/USDC"
+        if base_fee is None:
+            base_fee = _inst_fee(self.instrument)
+        if fee_rates is None:
+            fee_rates = [base_fee,
+                         max(FEE_RATE_STRESS_MID, 2.0 * base_fee),
+                         max(FEE_RATE_STRESS_HIGH, 4.0 * base_fee)]
         self.features = features
         self.min_trades_full = min_trades_full
         self.min_trades_oos = min_trades_oos
         self.oos_pnl_ratio_min = oos_pnl_ratio_min
         self.wf_folds = wf_folds
         self.wf_majority = wf_majority
-        self.fee_rates = fee_rates or [FEE_RATE_BASE, FEE_RATE_STRESS_MID, FEE_RATE_STRESS_HIGH]
+        self.fee_rates = fee_rates
         self.base_fee = base_fee
         self.eval = GenomeEvaluator(features, fee_rate=base_fee, initial_capital=BOOK_USD)
 
@@ -585,7 +601,9 @@ class PromotionFunnel:
         rows = {}
         n_pos = n_tested = 0
         worst = 0.0
-        for pair in ("BTC/USDC", "ETH/USDC"):
+        others = [p for p in ("SOL/USDC", "BTC/USDC", "ETH/USDC")
+                  if p != self.instrument][:2]
+        for pair in others:
             try:
                 from layer1.historical_feature_engine_1h import (
                     get_historical_features_1h,
@@ -713,17 +731,23 @@ class PromotionFunnel:
         kept: List[Dict[str, Any]] = []
         seen_families = set()
         logic_counts: Dict[str, int] = {}
+        inst_counts: Dict[str, int] = {}
         for c in champs:
             fk = _fam_of(c)
             if fk in seen_families:
                 continue
-            logic = (c.get("genome") or {}).get("entry_logic", "?")
+            g = c.get("genome") or {}
+            logic = g.get("entry_logic", "?")
+            inst = g.get("instrument") or "SOL/USDC"
             if logic_counts.get(logic, 0) >= 2:
+                continue
+            if inst_counts.get(inst, 0) >= BOARD_MAX_PER_INSTRUMENT:
                 continue
             kept.append(c)
             seen_families.add(fk)
             logic_counts[logic] = logic_counts.get(logic, 0) + 1
-            if len(kept) >= 8:
+            inst_counts[inst] = inst_counts.get(inst, 0) + 1
+            if len(kept) >= BOARD_MAX:
                 break
 
         CHAMPIONS_PATH.write_text(
@@ -770,7 +794,8 @@ def _family_key_from_genome_dict(g: Dict[str, Any]) -> Tuple:
     exits = tuple(
         sorted({str(e.get("exit_type") or "?") for e in (g.get("exit_rules") or [])})
     )
-    return (logic, inds, dirs, exits)
+    from instruments import suffix
+    return (f"{logic}{suffix(g.get('instrument') or '')}", inds, dirs, exits)
 
 
 def flush_legacy_champions(score_cap: float = 1e6) -> int:
@@ -832,12 +857,34 @@ def revalidate_champions(
     if not champs:
         return {"kept": 0, "demoted": 0}
 
-    funnel = PromotionFunnel(features)
+    funnels: Dict[str, PromotionFunnel] = {}
+
+    def _funnel_for(inst: str) -> PromotionFunnel:
+        if inst not in funnels:
+            feats = features
+            if inst != "SOL/USDC":
+                from layer1.historical_feature_engine_1h import (
+                    get_historical_features_1h,
+                )
+                feats = get_historical_features_1h(inst, limit=len(features))
+            funnels[inst] = PromotionFunnel(feats, instrument=inst)
+        return funnels[inst]
+
     kept: List[Dict[str, Any]] = []
     demoted: List[Dict[str, Any]] = []
     for c in champs:
         gdict = c.get("genome")
         if not gdict:
+            continue
+        try:
+            funnel = _funnel_for(gdict.get("instrument") or "SOL/USDC")
+        except Exception as ex:
+            # Could not CHECK (e.g. market data unavailable) is not FAILED:
+            # keep the champion untouched and retry at the next startup.
+            kept.append(c)
+            if verbose:
+                print(f"  [reval] SKIP {c.get('genome_id')} "
+                      f"(could not load market: {ex})")
             continue
         try:
             res = funnel.run(
@@ -1011,7 +1058,9 @@ def funnel_population_top(
         if _eligible(g):
             picked.append(g)
 
-    funnel = PromotionFunnel(features)
+    inst = (getattr(population[0], "instrument", "SOL/USDC")
+            if population else "SOL/USDC")
+    funnel = PromotionFunnel(features, instrument=inst)
     results = []
     for g in picked:
         r = funnel.run(g, n_trials_context=n_trials_context, verbose=verbose)

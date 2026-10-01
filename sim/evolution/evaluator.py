@@ -568,8 +568,12 @@ class EvolutionEngine:
         seed_fraction: float = 0.20,
         mode: str = "explore",
         extra_family_tax: Optional[Dict[str, float]] = None,
+        instrument: str = "SOL/USDC",
     ):
         self.features = features
+        # Every genome this engine evaluates trades this instrument; costs
+        # come from the instrument registry (measured Jupiter round trips).
+        self.instrument = instrument or "SOL/USDC"
         self.population_size = population_size
         self.elite_size = elite_size
         self.mutation_rate = mutation_rate
@@ -584,7 +588,9 @@ class EvolutionEngine:
         # "explore" = broad hunt; "exploit" = dig around known winners
         self.mode = mode if mode in ("explore", "exploit") else "explore"
 
-        self.evaluator = GenomeEvaluator(features)
+        from instruments import fee_rate as _inst_fee
+        self.evaluator = GenomeEvaluator(features,
+                                         fee_rate=_inst_fee(self.instrument))
 
         # Calibrate threshold sampling ranges to the actual (augmented) data
         # so random/mutated conditions land where they can actually flip.
@@ -876,6 +882,13 @@ class EvolutionEngine:
 
         pending: List[StrategyGenome] = []
         for genome in self.population:
+            # Single choke point: seeds/champions bred on another instrument
+            # are re-tagged and re-scored here (their old results describe a
+            # different market and must not be reused).
+            if getattr(genome, "instrument", "SOL/USDC") != self.instrument:
+                genome.instrument = self.instrument
+                genome.backtest_results = None
+                genome.fitness = 0.0
             if genome.backtest_results is not None:
                 continue
             if self.md_kill_logic(genome):
