@@ -26,13 +26,11 @@ from layer1.historical_feature_engine_1h import compute_all_features_1h
 
 from instruments import TRADEABLE
 
-# Tradeable on Jupiter (see instruments.py for the admission measurements)
+# Every searched instrument, both venues (see instruments.py)
 PAIRS_1H = list(TRADEABLE)
-# Validation-only majors: candles + features, never traded (Jupiter cannot
-# execute them at a sane cost; a CEX venue would be a separate decision).
-VALIDATION_PAIRS_1H = [
-    "BNB/USDT", "XRP/USDT", "ADA/USDT", "LINK/USDT", "LTC/USDT",
-]
+# Data-only pairs (none at present: the former validation majors became the
+# paper-only CEX tier on 2026-10-05)
+VALIDATION_PAIRS_1H: list = []
 ALL_PAIRS_1H = PAIRS_1H + VALIDATION_PAIRS_1H
 
 

@@ -4,10 +4,30 @@ Written 2026-08-02, before the unattended month. Each item lists WHY it waits.
 First action on return: read dashboard section 4 (Chart D verdict + Chart C
 wall), then pick from here.
 
+## Decision checkpoint: 2026-11-30 (agreed 2026-10-05)
+
+`success_criteria.DECISION_DATE`; dashboard shows the countdown, the
+sentinel sends a desktop notification on the day and on any first PASS.
+A PAPER PASS now means: 30+ days, 20+ trades, +$25 net, drawdown under 20%,
+a stop loss in the strategy, AND beating the exposure-matched market
+benchmark (the same hurdle as the exam's benchmark gate).
+
+- **One or more PASS by Nov 30** -> discuss LIVE micro (25% of book) for
+  that strategy only. Jupiter-tier: wallet + small USDC. CEX-tier: needs a
+  Binance account (user opens and funds it; spot only, no leverage, keeps
+  the Swiss private-investor status). Going live is the user's action.
+- **No PASS by Nov 30** -> conclude that hourly technical/derivatives rules
+  on 12 liquid coins have no edge at this scale after costs. Then choose:
+  stop the search (keep data collection), or pivot to one of the two
+  best-evidenced structural strategies below (funding carry;
+  cross-sectional momentum across the 12-coin basket, which the CEX tier
+  now makes executable on paper).
+- Either way, report the forward ledger verdict and the per-coin results.
+
 ## Waiting on data maturity (~2-3 months of collection)
 
 - **Derivatives features into the feature engine**: funding z-scores/extremes
-  across venues, OI level & 1h/24h deltas, OI-price divergence, top-trader и
+  across venues, OI level & 1h/24h deltas, OI-price divergence, top-trader and
   global long/short ratios, taker buy/sell ratio (data already collecting
   hourly for 10 majors via `layer1/derivatives_collector.py`). Do NOT
   integrate before enough history spans the search window — features that are

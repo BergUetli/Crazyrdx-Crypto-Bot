@@ -507,6 +507,37 @@ def try_resume_stopped_agent(state: dict) -> str | None:
 
 # ----------------------------------------------------------------- main ----
 
+def milestone_notifications(state: dict) -> None:
+    """One-time notifications for the two moments that need the user:
+    the first PAPER PASS of any book, and the agreed decision date."""
+    try:
+        p = json.loads((DATA / "paper_status.json").read_text())
+    except Exception:
+        p = {}
+    passes = [e for e in p.get("enrollments", []) if e.get("verdict") == "PASS"]
+    seen = set(state.get("notified_pass_ids", []))
+    for e in passes:
+        if e.get("id") in seen:
+            continue
+        notify("Trading bot: PAPER PASS",
+               f"{e.get('instrument')} {e.get('logic')} passed every paper bar "
+               f"(+${e.get('net_pnl')}, beat the market). Live-micro is your call.")
+        seen.add(e.get("id"))
+    state["notified_pass_ids"] = sorted(x for x in seen if x is not None)
+    try:
+        from success_criteria import DECISION_DATE
+        import datetime as _dt
+        due = _dt.date.today() >= _dt.date.fromisoformat(DECISION_DATE)
+    except Exception:
+        due = False
+    if due and not state.get("decision_notified"):
+        msg = (f"{len(passes)} strategy(ies) passed paper: live-micro discussion open."
+               if passes else
+               "No paper pass: time to decide stop vs pivot (see dashboard).")
+        notify(f"Trading bot: decision day", msg)
+        state["decision_notified"] = True
+
+
 def main() -> int:
     prev = {}
     try:
@@ -537,6 +568,7 @@ def main() -> int:
         state["dash_fails"] = 0
         state.pop("dash_first_fail_ts", None)
         state["last_incident"] = incident_line
+    milestone_notifications(state)
     save_state(state)
 
     prev_alerts = set(prev.get("alerts") or [])

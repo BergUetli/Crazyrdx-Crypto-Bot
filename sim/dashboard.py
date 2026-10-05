@@ -1538,6 +1538,47 @@ _NO_STOP_BADGE = ('<span class="badge bad" '
                   'NO STOP</span>')
 
 
+def _venue_tag(e: dict) -> str:
+    try:
+        from instruments import venue
+        if venue(e.get("instrument") or "SOL/USDC") == "binance":
+            return "<span class='muted' title='paper-only exchange tier (Binance order book + 0.10% fee)'>·cex</span>"
+    except Exception:
+        pass
+    return ""
+
+
+def _beat_cell(e: dict) -> str:
+    b = e.get("bench_usd")
+    if b is None:
+        return "<span class='muted'>n/a</span>"
+    cls = "ok" if e.get("beat_market") else "bad"
+    word = "yes" if e.get("beat_market") else "no"
+    return f"<span class='badge {cls}' title='drift benchmark ${b:+.2f}'>{word}</span> <span class='muted'>vs ${b:+.0f}</span>"
+
+
+def decision_banner(p: dict) -> str:
+    """Countdown to the agreed decision date and the rule that applies."""
+    try:
+        from success_criteria import DECISION_DATE
+        import datetime as _dt
+        d = _dt.date.fromisoformat(DECISION_DATE)
+        left = (d - _dt.date.today()).days
+    except Exception:
+        return ""
+    n_pass = sum(1 for e in (p or {}).get("enrollments", [])
+                 if e.get("verdict") == "PASS")
+    when = (f"{left} days left" if left > 0 else
+            "today" if left == 0 else f"passed {-left} days ago")
+    state = (f"<b class='pos'>{n_pass} strategy(ies) passed paper</b>: the live-micro "
+             f"discussion is open (your decision)." if n_pass else
+             "No paper pass yet. If none by the date: conclude this search has no "
+             "edge at our scale, then stop or pivot (funding carry / "
+             "cross-sectional momentum).")
+    return (f"<div class='warnbox'><b>Decision checkpoint {DECISION_DATE}</b> "
+            f"({when}). {state}</div>")
+
+
 def paper_trading_card(s: dict) -> str:
     """Live-quote shadow trading status (the official PAPER stage)."""
     try:
@@ -1548,23 +1589,26 @@ def paper_trading_card(s: dict) -> str:
         return ""
     bars = p.get("bars") or {}
     rows = "".join(
-        f"<tr><td><b>{(e.get('instrument') or 'SOL/USDC').split('/')[0]}</b> {e['logic']}</td><td class='muted'><code>{e['genome_id']}</code></td>"
+        f"<tr><td><b>{(e.get('instrument') or 'SOL/USDC').split('/')[0]}</b>{_venue_tag(e)} {e['logic']}</td><td class='muted'><code>{e['genome_id']}</code></td>"
         f"<td>{e['days']:.0f}/{bars.get('min_days', 30)}</td><td>{e['trades']}</td>"
         f"<td class='{'pos' if e['net_pnl'] >= 0 else 'neg'}'>{e['net_pnl']:+.2f}</td>"
         f"<td>{e['max_dd_pct']:.1f}%</td>"
         f"<td>{'<span class=badge>yes</span>' if e.get('protected', True) else _NO_STOP_BADGE}</td>"
+        f"<td>{_beat_cell(e)}</td>"
         f"<td><span class='badge {'ok' if e['verdict'] == 'PASS' else ('bad' if e['verdict'] == 'FAIL' else 'warn')}'>{e['verdict']}</span></td></tr>"
         for e in p["enrollments"]
     )
     return f"""
   <div class="card">
+    {decision_banner(p)}
     <h2>Paper trading <span class="section-hint">frozen champions vs REAL Jupiter quotes — no money at risk</span></h2>
     <p class="lead">Each champion trades a virtual ${p.get('book_usd', 0):.0f} book at live quoted prices for 30 days.
        PASS needs &ge;{bars.get('min_trades', 20)} trades, &ge;+${bars.get('min_net_usd', 0):.0f} net, drawdown &le;{int((bars.get('max_dd', 0.2)) * 100)}%,
-       and a stop loss (or trailing stop) in the strategy.
+       a stop loss (or trailing stop) in the strategy, and it must beat what the same
+       market exposure would have earned by just holding the coin.
        A PASS here is the agreed gate before any live-capital discussion.</p>
     <table>
-      <tr><th>coin / type</th><th>strategy</th><th>days</th><th>trades</th><th>net $</th><th>max DD</th><th>stop?</th><th>verdict</th></tr>
+      <tr><th>coin / type</th><th>strategy</th><th>days</th><th>trades</th><th>net $</th><th>max DD</th><th>stop?</th><th>beat market?</th><th>verdict</th></tr>
       {rows}
     </table>
   </div>"""

@@ -35,7 +35,7 @@ from config import DATA_DIR
 from success_criteria import (
     BOOK_USD, FIXED_COST_PER_SIDE_USD,
     PAPER_MIN_DAYS, PAPER_MIN_TRADES, PAPER_MIN_NET_PNL_USD,
-    PAPER_MAX_DRAWDOWN_HARD,
+    PAPER_MAX_DRAWDOWN_HARD, PAPER_REQUIRE_BEAT_BENCHMARK,
 )
 
 DB_PAPER = DATA_DIR / "paper_trader.db"
@@ -86,6 +86,18 @@ def live_price(size_usd: float, side: str,
         from layer1.execution_probe import jupiter_quote
         from instruments import INSTRUMENTS, USDC_MINT
         meta = INSTRUMENTS[instrument]
+        if meta.get("venue") == "binance":
+            # CEX tier: real public order book + the known taker fee
+            from layer1.execution_probe import book_fill
+            from instruments import venue_fee_rate
+            fee = venue_fee_rate(instrument)
+            with httpx.Client() as client:
+                f = book_fill(client, meta["binance"], size_usd, side)
+            if f:
+                px = f["price"] * (1 + fee) if side == "buy" else f["price"] * (1 - fee)
+                return {"price": px, "source": "binance:book+fee",
+                        "mid": f["mid"]}
+            return {"price": None, "source": "unavailable", "mid": None}
         mint, dec = meta["mint"], int(meta["decimals"])
         with httpx.Client() as client:
             mid = None
@@ -327,8 +339,43 @@ def process_bars(conn: sqlite3.Connection, verbose: bool = True) -> Dict[str, in
     return stats
 
 
+def drift_benchmark(conn: sqlite3.Connection, eid: int, instrument: str,
+                    enrolled_ts: float) -> Optional[float]:
+    """Exposure-matched market benchmark for one book, same construction
+    as the LAB benchmark gate: coin return over the book's life x the
+    book's time in market x its average position size, minus the costs the
+    book's own trades incurred. None if prices are unavailable."""
+    from layer1.historical_feature_engine_1h import get_historical_features_1h
+    from instruments import fee_rate
+    rows = conn.execute(
+        "SELECT entry_ts, exit_ts, size_usd FROM trades WHERE enrollment_id=?",
+        (eid,)).fetchall()
+    if not rows:
+        return 0.0
+    hours = int((time.time() - enrolled_ts) / 3600) + 48
+    try:
+        feats = get_historical_features_1h(instrument, limit=hours)
+    except Exception:
+        return None
+    start_ms = enrolled_ts * 1000
+    window = [f for f in feats if f["ts"] >= start_ms]
+    if len(window) < 2:
+        return None
+    first, last = window[0]["features"]["close"], window[-1]["features"]["close"]
+    span = window[-1]["ts"] - window[0]["ts"]
+    if first <= 0 or span <= 0:
+        return None
+    held = sum(max(x - e, 0) for e, x, _ in rows)
+    time_in_market = min(held / span, 1.0)
+    avg_size = sum(r[2] for r in rows) / len(rows)
+    costs = len(rows) * 2 * (fee_rate(instrument) * avg_size
+                             + FIXED_COST_PER_SIDE_USD)
+    return (last / first - 1.0) * time_in_market * avg_size - costs
+
+
 def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
     """PAPER verdicts per enrollment + status JSON for the dashboard."""
+    from evolution.promotion_funnel import benchmark_gate_passed
     out = []
     now = time.time()
     for (eid, gid, gjson, ets, status) in conn.execute(
@@ -349,12 +396,16 @@ def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
         from success_criteria import has_protective_exit
         gdict = json.loads(gjson) or {}
         protected = has_protective_exit(gdict)
+        inst = gdict.get("instrument") or "SOL/USDC"
+        bench = drift_benchmark(conn, eid, inst, ets)
+        beat = (bench is not None and benchmark_gate_passed(net, bench))
         verdict = "RUNNING"
         if days >= PAPER_MIN_DAYS:
             passed = (n_tr >= PAPER_MIN_TRADES
                       and net >= PAPER_MIN_NET_PNL_USD
                       and dd <= PAPER_MAX_DRAWDOWN_HARD
-                      and protected)
+                      and protected
+                      and (beat or not PAPER_REQUIRE_BEAT_BENCHMARK))
             verdict = "PASS" if passed else "FAIL"
             if status == "active" and days >= TERM_DAYS:
                 conn.execute("UPDATE enrollments SET status=? WHERE id=?",
@@ -365,13 +416,16 @@ def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
                     "days": round(days, 1), "trades": n_tr,
                     "net_pnl": round(net, 2), "max_dd_pct": round(dd * 100, 1),
                     "verdict": verdict, "status": status,
-                    "protected": protected})
+                    "protected": protected,
+                    "bench_usd": (round(bench, 2) if bench is not None else None),
+                    "beat_market": bool(beat)})
     conn.commit()
     payload = {
         "updated_ts": now, "book_usd": BOOK_USD,
         "bars": {"min_days": PAPER_MIN_DAYS, "min_trades": PAPER_MIN_TRADES,
                  "min_net_usd": PAPER_MIN_NET_PNL_USD,
-                 "max_dd": PAPER_MAX_DRAWDOWN_HARD},
+                 "max_dd": PAPER_MAX_DRAWDOWN_HARD,
+                 "beat_benchmark": PAPER_REQUIRE_BEAT_BENCHMARK},
         "enrollments": out,
     }
     try:

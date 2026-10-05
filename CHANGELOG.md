@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here.
 
+## 2026-10-05 — Beat-the-market paper bar, Nov 30 decision date, CEX paper tier
+
+User approved all three open proposals ("decide what you think is needed
+and implement").
+
+- **Beat-the-market bar** (`PAPER_REQUIRE_BEAT_BENCHMARK`): a PAPER PASS
+  must now also clear the exposure-matched drift benchmark, using the exam's
+  own `benchmark_gate_passed` hurdle (25% or $1.25 above it). Benchmark per
+  book = coin return over the book's life x its time in market x its average
+  position size, minus the costs its trades incurred. Published per book
+  (`bench_usd`, `beat_market`); dashboard column "beat market?".
+- **Decision checkpoint 2026-11-30** (`DECISION_DATE`, rule in ROADMAP):
+  dashboard countdown banner; sentinel sends one desktop notification on
+  the date and one the first time any book passes.
+- **CEX paper tier**: XRP, ADA, LTC, LINK, BNB (previously data-only) are
+  now searched and paper-traded against Binance's public order book plus
+  its 0.10% taker fee. Venue research: Binance serves Swiss residents at
+  0.10%/0.10% for regular users; Kraken's entry taker went to 0.80% in July
+  2026 (unusable for hourly strategies). Measured $250 book impact 0.1-1.8
+  bps, so cost is ~10.5 bps per side, about 5x the Jupiter majors. Costs
+  split into a known venue fee plus measured execution (x1.5, floor 2.2
+  bps); fee stress only stresses the uncertain part (CEX: 15/20 bps; the
+  Jupiter formula is unchanged). The hourly probe walks the Binance book for
+  these coins. PAPER ONLY: no account exists; live on this tier would need
+  the user to open and fund one.
+- Rotation now spans 12 instruments (11 active; AVAX still benched on cost).
+  Paper slots stay at 12 (no increase: more simultaneous books would raise
+  the odds of a lucky pass).
+
 ## 2026-10-01 — Multi-instrument search + paper trading; stale-feature fix
 
 User decision: stop focusing on SOL only. Implemented across the stack.

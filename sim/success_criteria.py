@@ -42,6 +42,17 @@ LAB_BENCH_EXCESS_FACTOR = 1.25    # and at least 25% above it when it is positiv
 # promotion, paper, or live unless it carries a protective exit (stop_loss or
 # trailing_stop). Time-only exits ride crashes to the bottom.
 PAPER_REQUIRE_PROTECTIVE_EXIT = True
+# Beat-the-market bar (user decision 2026-10-05): a PAPER pass must clear
+# the same exposure-matched benchmark hurdle as the LAB benchmark gate —
+# what the book's own time-in-market x position size would have earned
+# from the coin's drift alone. In a +18.5% month (Sep 2026) every book
+# cleared +$25 by holding exposure; none beat drift AND traded enough.
+PAPER_REQUIRE_BEAT_BENCHMARK = True
+# Decision checkpoint (user decision 2026-10-05): if no strategy has a
+# PAPER PASS by this date, conclude this search space has no edge at our
+# scale and choose: stop, or pivot (funding carry / cross-sectional
+# momentum). A PASS by then opens the LIVE-micro discussion (user's call).
+DECISION_DATE = "2026-11-30"
 PROTECTIVE_EXIT_TYPES = ("stop_loss", "trailing_stop")
 
 

@@ -109,6 +109,32 @@ def _binance_mid_sym(client: httpx.Client, symbol: str) -> Optional[float]:
         return None
 
 
+def book_fill(client: httpx.Client, symbol: str, usd: float,
+              side: str) -> Optional[Dict[str, float]]:
+    """Walk Binance's public order book for a `usd`-sized market order.
+    Returns {"price": avg fill, "mid": mid}; the venue fee is NOT included."""
+    try:
+        r = client.get("https://api.binance.com/api/v3/depth",
+                       params={"symbol": symbol, "limit": 50}, timeout=10)
+        r.raise_for_status()
+        d = r.json()
+        bid, ask = float(d["bids"][0][0]), float(d["asks"][0][0])
+        levels = d["asks"] if side == "buy" else d["bids"]
+        got = spent = 0.0
+        for p_, q_ in levels:
+            p_, q_ = float(p_), float(q_)
+            take = min(q_, (usd - spent) / p_)
+            got += take
+            spent += take * p_
+            if spent >= usd - 1e-9:
+                break
+        if got <= 0 or spent < usd - 1e-6:
+            return None  # book too thin for this size within 50 levels
+        return {"price": spent / got, "mid": (bid + ask) / 2.0}
+    except Exception:
+        return None
+
+
 def probe_once(client: httpx.Client, conn: sqlite3.Connection) -> Dict[str, Any]:
     """One measurement pass over every tradeable instrument: real Jupiter
     buy and sell quotes at each size vs the Binance mid. Keeps each
@@ -118,6 +144,26 @@ def probe_once(client: httpx.Client, conn: sqlite3.Connection) -> Dict[str, Any]
     results = []
     per_inst: Dict[str, list] = {}
     for inst, meta in INSTRUMENTS.items():
+        if meta.get("venue") == "binance":
+            # CEX tier: execution cost = order-book walk vs mid (venue fee
+            # excluded here; instruments.py adds it as a known constant)
+            for size in SIZES_USD:
+                for side in ("buy", "sell"):
+                    f = book_fill(client, meta["binance"], size, side)
+                    if f:
+                        cost = ((f["price"] / f["mid"] - 1.0) if side == "buy"
+                                else (1.0 - f["price"] / f["mid"])) * 1e4
+                        row = (now, side, size, f["mid"], f["price"], cost,
+                               None, None, "binance:depth", None, inst)
+                    else:
+                        row = (now, side, size, None, None, None, None, None,
+                               None, "book unavailable or too thin", inst)
+                    conn.execute(
+                        "INSERT INTO quotes VALUES (?,?,?,?,?,?,?,?,?,?,?)", row)
+                    results.append(row)
+            per_inst[inst] = [r[5] for r in results
+                              if r[10] == inst and r[5] is not None]
+            continue
         mint, dec = meta["mint"], 10 ** int(meta["decimals"])
         legacy = inst == "SOL/USDC"  # SOL rows keep their original side names
         buy_side, sell_side = ("buy_sol", "sell_sol") if legacy else ("buy", "sell")

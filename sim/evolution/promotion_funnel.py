@@ -256,14 +256,12 @@ class PromotionFunnel:
         base_fee: Optional[float] = None,
         instrument: str = "SOL/USDC",
     ):
-        from instruments import fee_rate as _inst_fee
+        from instruments import fee_rate as _inst_fee, stress_fee_rates
         self.instrument = instrument or "SOL/USDC"
         if base_fee is None:
             base_fee = _inst_fee(self.instrument)
         if fee_rates is None:
-            fee_rates = [base_fee,
-                         max(FEE_RATE_STRESS_MID, 2.0 * base_fee),
-                         max(FEE_RATE_STRESS_HIGH, 4.0 * base_fee)]
+            fee_rates = stress_fee_rates(self.instrument)
         self.features = features
         self.min_trades_full = min_trades_full
         self.min_trades_oos = min_trades_oos

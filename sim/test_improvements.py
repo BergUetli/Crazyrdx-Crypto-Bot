@@ -1327,8 +1327,9 @@ def test_multi_instrument(features):
     old_probe = ins.PROBE_DB
     tmpd = tf.TemporaryDirectory()
     ins.PROBE_DB = Path(tmpd.name) / "probe.db"  # hermetic: no real quotes
-    check("registry: 7 Jupiter-executable instruments, SOL first",
-          len(ins.TRADEABLE) == 7 and ins.TRADEABLE[0] == "SOL/USDC")
+    check("registry: 7 Jupiter + 5 CEX-tier instruments, SOL first",
+          len(ins.TRADEABLE) == 12 and ins.TRADEABLE[0] == "SOL/USDC"
+          and sum(1 for i in ins.TRADEABLE if ins.venue(i) == "jupiter") == 7)
     check("SOL/BTC/ETH/JUP cost = base Jupiter rate (no probe data yet)",
           all(ins.fee_rate(i) == sc.FEE_RATE_BASE
               for i in ("SOL/USDC", "BTC/USDC", "ETH/USDC", "JUP/USDT")))
@@ -1450,7 +1451,7 @@ def test_multi_instrument(features):
             "champions": [{"genome_id": "multi_doge", "genome": protected},
                           {"genome_id": "not_venue", "genome": {
                               **protected, "genome_id": "not_venue",
-                              "instrument": "XRP/USDT"}}]}))
+                              "instrument": "TRX/USDT"}}]}))
         old_state = (pt.SIM, pt.DB_PAPER, pt.STATUS_JSON,
                      pt.live_price, hfe.get_historical_features_1h)
         try:
@@ -1472,7 +1473,7 @@ def test_multi_instrument(features):
             conn = pt._conn()
             n = pt.enroll_new(conn, verbose=False)
             fam = conn.execute("SELECT family FROM enrollments").fetchone()[0]
-            check("DOGE champion enrolled; non-venue XRP champion refused",
+            check("DOGE champion enrolled; unsupported TRX champion refused",
                   n == 1 and fam.endswith("@DOGE/USDT"))
             conn.execute("UPDATE enrollments SET last_bar_ts=?",
                          (features[60]["ts"],))
@@ -1491,6 +1492,133 @@ def test_multi_instrument(features):
              pt.live_price, hfe.get_historical_features_1h) = old_state
     ins.PROBE_DB = old_probe
     tmpd.cleanup()
+
+
+def test_cex_tier_and_benchmark_bar():
+    print("\n[20e] CEX paper tier, beat-the-market bar, decision milestones")
+    import tempfile as tf
+    import instruments as ins
+    import success_criteria as sc
+    old_probe = ins.PROBE_DB
+    tmpd = tf.TemporaryDirectory()
+    ins.PROBE_DB = Path(tmpd.name) / "none.db"
+    try:
+        xrp = ins.fee_rate("XRP/USDT")
+        check("CEX cost = 10 bps taker fee + execution (floor 2.2 bps)",
+              abs(xrp - (10e-4 + sc.FEE_RATE_BASE)) < 1e-12)
+        st = ins.stress_fee_rates("XRP/USDT")
+        check("CEX stress adds only to the uncertain part (15 / 20 bps)",
+              abs(st[1] - 15e-4) < 1e-12 and abs(st[2] - 20e-4) < 1e-12)
+        check("Jupiter stress formula unchanged (SOL: base, 5, 10 bps)",
+              ins.stress_fee_rates("SOL/USDC") == [
+                  sc.FEE_RATE_BASE, sc.FEE_RATE_STRESS_MID,
+                  sc.FEE_RATE_STRESS_HIGH])
+        check("CEX tier is in the rotation (12 instruments total)",
+              len(ins.TRADEABLE) == 12 and "XRP/USDT" in ins.active_instruments())
+
+        import paper_trader as pt
+        import layer1.execution_probe as ep
+        old_bf = ep.book_fill
+        ep.book_fill = lambda client, sym, usd, side: {"price": 2.0, "mid": 2.0}
+        try:
+            b = pt.live_price(250, "buy", "XRP/USDT")
+            sl = pt.live_price(250, "sell", "XRP/USDT")
+        finally:
+            ep.book_fill = old_bf
+        check("CEX paper fills = order book +/- the 0.10% fee",
+              abs(b["price"] - 2.002) < 1e-12 and abs(sl["price"] - 1.998) < 1e-12)
+
+        # Benchmark: coin +50% over the book's life, book in market half
+        # the time at $200 average size, 20 trades (hurdle well above the
+        # +$25 minimum, so the market bar is what separates the cases)
+        import layer1.historical_feature_engine_1h as hfe
+        H = 3_600_000
+        t0_s = time.time() - 31 * 86400
+        t0_ms = int(t0_s * 1000)
+        n_bars = 31 * 24
+        feats = [{"ts": t0_ms + i * H,
+                  "features": {"close": 100.0 * (1 + 0.50 * i / (n_bars - 1))}}
+                 for i in range(n_bars)]
+        span = feats[-1]["ts"] - feats[0]["ts"]
+        old_get = hfe.get_historical_features_1h
+        hfe.get_historical_features_1h = lambda pair, **kw: feats
+        db = Path(tmpd.name) / "paper.db"
+        old_db = pt.DB_PAPER
+        pt.DB_PAPER = db
+        try:
+            conn = pt._conn()
+            g = {"entry_logic": "OR", "instrument": "SOL/USDC",
+                 "exit_rules": [{"exit_type": "stop_loss", "value": 0.02}],
+                 "entry_conditions": []}
+            conn.execute("INSERT INTO enrollments (genome_id, family, genome_json, "
+                         "enrolled_ts, cash, last_bar_ts) VALUES (?,?,?,?,?,?)",
+                         ("bench_t", "f1", json.dumps(g), t0_s, 500.0, 0))
+            eid = conn.execute("SELECT id FROM enrollments").fetchone()[0]
+            half = span // 2
+            # 20 trades sharing the half-span of exposure, $200 each
+            seg = half // 20
+            for k in range(20):
+                e = t0_ms + k * seg * 2
+                conn.execute("INSERT INTO trades (enrollment_id, entry_ts, exit_ts, "
+                             "entry_price, exit_price, size_usd, net_pnl, "
+                             "exit_reason, fill_source) VALUES (?,?,?,?,?,?,?,?,?)",
+                             (eid, e, e + seg, 100, 100, 200.0, 0.0, "t", "paper"))
+            conn.commit()
+            bench = pt.drift_benchmark(conn, eid, "SOL/USDC", t0_s)
+            costs = 20 * 2 * (ins.fee_rate("SOL/USDC") * 200.0
+                              + sc.FIXED_COST_PER_SIDE_USD)
+            expect = 0.50 * (20 * seg / span) * 200.0 - costs
+            check(f"benchmark = drift x time-in-market x size - costs "
+                  f"(${bench:.2f} vs ${expect:.2f})",
+                  bench is not None and abs(bench - expect) < 0.05)
+
+            def grade_with_net(total):
+                conn.execute("UPDATE trades SET net_pnl=? WHERE enrollment_id=?",
+                             (total / 20.0, eid))
+                conn.commit()
+                return pt.grade_and_publish(conn)["enrollments"][0]
+            hurdle = max(expect * sc.LAB_BENCH_EXCESS_FACTOR,
+                         expect + sc.LAB_BENCH_MIN_EXCESS_USD)
+            check("scenario: market hurdle sits above the +$25 minimum",
+                  hurdle - 1.0 > sc.PAPER_MIN_NET_PNL_USD)
+            under = grade_with_net(hurdle - 1.0)
+            over = grade_with_net(hurdle + 5.0)
+            check("clears every other bar but not drift -> FAIL",
+                  under["verdict"] == "FAIL" and not under["beat_market"])
+            check("beats drift and every bar -> PASS",
+                  over["verdict"] == "PASS" and over["beat_market"])
+            conn.close()
+        finally:
+            hfe.get_historical_features_1h = old_get
+            pt.DB_PAPER = old_db
+
+        # Milestones: first PASS and decision day notify exactly once
+        import sentinel as sn
+        sent = []
+        old_notify, old_data = sn.notify, sn.DATA
+        sn.notify = lambda t, m: sent.append(t)
+        sn.DATA = Path(tmpd.name)
+        try:
+            (sn.DATA / "paper_status.json").write_text(json.dumps({
+                "enrollments": [{"id": 7, "verdict": "PASS",
+                                 "instrument": "XRP/USDT", "logic": "OR",
+                                 "net_pnl": 40}]}))
+            state = {}
+            old_date = sc.DECISION_DATE
+            sc.DECISION_DATE = "2000-01-01"
+            try:
+                sn.milestone_notifications(state)
+                sn.milestone_notifications(state)
+            finally:
+                sc.DECISION_DATE = old_date
+            check("first PASS and decision day each notify once",
+                  sent.count("Trading bot: PAPER PASS") == 1
+                  and sent.count("Trading bot: decision day") == 1)
+        finally:
+            sn.notify, sn.DATA = old_notify, old_data
+    finally:
+        ins.PROBE_DB = old_probe
+        tmpd.cleanup()
 
 
 def test_forward_feedback(features):
@@ -1750,6 +1878,7 @@ def main():
     test_derivatives_features(features)
     test_stale_external_features()
     test_multi_instrument(features)
+    test_cex_tier_and_benchmark_bar()
     test_forward_feedback(features)
     test_sentinel()
     test_research_agent(features)

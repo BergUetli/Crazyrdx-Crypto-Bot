@@ -11,10 +11,11 @@ sample, tracked hourly by execution_probe):
     DOGE 6.1 | AVAX 10.9 then 42 an hour later (volatile, thin pool)
     rejected: JTO 46 | PYTH 21 | RENDER 53 | LINK 44 | BNB 27
 
-Per-side fee_rate = max(FEE_RATE_BASE, 1.5 x measured per-side cost): the
-1.5x margin covers quote variance until the probe has history. Majors that
-Jupiter cannot execute cheaply (XRP, ADA, LTC, LINK, BNB) stay
-validation-only data until a centralized-exchange venue is decided.
+Per-side cost = known venue fee (CEX taker fee; 0 on Jupiter) + execution
+cost (measured spread/impact x1.5, floor 2.2 bps). Execution cost comes from
+the hourly probe's 7-day median once it has enough samples. Majors Jupiter
+cannot execute cheaply (XRP, ADA, LTC, LINK, BNB) are a second, paper-only
+tier priced on Binance's public order book plus its 0.10% fee.
 
 `pair` is the candle/feature key in historical DBs; `futures` is the Binance
 USDT-M symbol for derivatives features.
@@ -53,6 +54,23 @@ INSTRUMENTS: Dict[str, Dict[str, Any]] = {
     "AVAX/USDT": {"mint": "avaxGHCq3T7hoxd73oY2KY9hJSTaeMibXvHy5KNzh5D",
                   "decimals": 9, "binance": "AVAXUSDT", "futures": "AVAXUSDT",
                   "rt_bps_measured": 42.0},
+    # --- Centralized-exchange tier (2026-10-05, user decision: decide and
+    # build). Binance spot: available to Swiss residents, 0.10% maker/taker
+    # for regular users (Kraken's entry taker rose to 0.80% in July 2026,
+    # which no hourly strategy survives). Measured $250 order-book impact
+    # 2026-10-05: XRP 0.3, ADA 1.8, LTC 0.7, LINK 0.4, BNB 0.1 bps one side
+    # before the fee. PAPER ONLY: no exchange account exists; going live on
+    # this tier needs the user to open and fund one.
+    "XRP/USDT": {"venue": "binance", "binance": "XRPUSDT", "futures": "XRPUSDT",
+                 "taker_fee_bps": 10.0, "rt_bps_measured": 0.7},
+    "ADA/USDT": {"venue": "binance", "binance": "ADAUSDT", "futures": "ADAUSDT",
+                 "taker_fee_bps": 10.0, "rt_bps_measured": 3.7},
+    "LTC/USDT": {"venue": "binance", "binance": "LTCUSDT", "futures": "LTCUSDT",
+                 "taker_fee_bps": 10.0, "rt_bps_measured": 1.4},
+    "LINK/USDT": {"venue": "binance", "binance": "LINKUSDT", "futures": "LINKUSDT",
+                  "taker_fee_bps": 10.0, "rt_bps_measured": 0.7},
+    "BNB/USDT": {"venue": "binance", "binance": "BNBUSDT", "futures": "BNBUSDT",
+                 "taker_fee_bps": 10.0, "rt_bps_measured": 0.2},
 }
 
 TRADEABLE: List[str] = list(INSTRUMENTS)
@@ -104,8 +122,21 @@ def measured_one_side_bps(instrument: str) -> Optional[float]:
     return float(statistics.median(vals))
 
 
+def venue(instrument: str) -> str:
+    meta = INSTRUMENTS.get(instrument or DEFAULT_INSTRUMENT) or {}
+    return meta.get("venue", "jupiter")
+
+
+def venue_fee_rate(instrument: str) -> float:
+    """Known, contractual per-side fee (CEX taker fee). Zero on Jupiter,
+    where pool fees are already inside every quote."""
+    meta = INSTRUMENTS.get(instrument or DEFAULT_INSTRUMENT) or {}
+    return float(meta.get("taker_fee_bps", 0.0)) / 1e4
+
+
 def one_side_bps(instrument: str) -> float:
-    """Best current estimate of one-side cost: probe median, else registry."""
+    """Best current estimate of one-side EXECUTION cost (spread + impact,
+    excluding any venue fee): probe median, else registry."""
     m = measured_one_side_bps(instrument)
     if m is not None:
         return m
@@ -113,15 +144,34 @@ def one_side_bps(instrument: str) -> float:
     return float(meta.get("rt_bps_measured", 0.0)) / 2.0
 
 
+def exec_rate(instrument: str) -> float:
+    """Uncertain part of the cost: measured execution with a safety margin,
+    never below the original Jupiter-measured base."""
+    return max(FEE_RATE_BASE,
+               COST_MARGIN * max(0.0, one_side_bps(instrument)) / 1e4)
+
+
 def fee_rate(instrument: str) -> float:
     """Per-side proportional cost used by search, exam and ledger scoring."""
     if (instrument or DEFAULT_INSTRUMENT) not in INSTRUMENTS:
         return FEE_RATE_BASE
-    return max(FEE_RATE_BASE, COST_MARGIN * max(0.0, one_side_bps(instrument)) / 1e4)
+    return venue_fee_rate(instrument) + exec_rate(instrument)
+
+
+def stress_fee_rates(instrument: str) -> List[float]:
+    """[base, mid, high] for the exam's fee-stress gate. Only the uncertain
+    execution part is stressed (2x / 4x, floored at the historical absolute
+    5 / 10 bps); a known venue fee is added on top unchanged. For Jupiter
+    instruments this is exactly the previous formula."""
+    from success_criteria import FEE_RATE_STRESS_HIGH, FEE_RATE_STRESS_MID
+    vf, ex = venue_fee_rate(instrument), exec_rate(instrument)
+    return [vf + ex,
+            vf + max(FEE_RATE_STRESS_MID, 2.0 * ex),
+            vf + max(FEE_RATE_STRESS_HIGH, 4.0 * ex)]
 
 
 def active_instruments() -> List[str]:
-    """Tradeable instruments currently cheap enough to search."""
+    """Tradeable instruments whose execution cost is currently sane."""
     return [i for i in TRADEABLE if one_side_bps(i) <= MAX_ONE_SIDE_BPS]
 
 
