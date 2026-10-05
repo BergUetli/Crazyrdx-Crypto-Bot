@@ -1543,8 +1543,9 @@ def test_cex_tier_and_benchmark_bar():
         old_get = hfe.get_historical_features_1h
         hfe.get_historical_features_1h = lambda pair, **kw: feats
         db = Path(tmpd.name) / "paper.db"
-        old_db = pt.DB_PAPER
+        old_db, old_status = pt.DB_PAPER, pt.STATUS_JSON
         pt.DB_PAPER = db
+        pt.STATUS_JSON = Path(tmpd.name) / "status.json"  # never the real file
         try:
             conn = pt._conn()
             g = {"entry_logic": "OR", "instrument": "SOL/USDC",
@@ -1590,7 +1591,7 @@ def test_cex_tier_and_benchmark_bar():
             conn.close()
         finally:
             hfe.get_historical_features_1h = old_get
-            pt.DB_PAPER = old_db
+            pt.DB_PAPER, pt.STATUS_JSON = old_db, old_status
 
         # Milestones: first PASS and decision day notify exactly once
         import sentinel as sn
