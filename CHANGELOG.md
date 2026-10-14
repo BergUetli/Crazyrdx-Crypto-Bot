@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## 2026-10-14 — Fix: retired paper books' benchmark window
+
+The drift benchmark of a retired book kept extending to "now", so after
+SOL fell the retired September books flipped to "beat market: yes" (their
+benchmarks shrank from ~$26-38 to ~$3-8). The window now ends at the book's
+last processed bar. Verdicts were unaffected (all eight fail the stop-loss
+rule), but a stale benchmark could have produced a false PASS notification.
+
+Exam audit findings the same day (NOT changed: gate changes need the
+user's decision):
+- DSR gate double-counts sample size: `sharpe_ratio` is per-trade
+  mean/std x sqrt(min(n, 50)), and approximate_dsr multiplies by sqrt(n)
+  again, so the multiple-testing haircut is ~7x too weak. Recomputed
+  correctly, 0 of 83 recent exam passes survive, even assuming only 1,000
+  effective independent trials (raw count: 52M).
+- OOS gate skips its ratio check when in-sample P&L <= 0, so a strategy
+  that lost in-sample and won out-of-sample passes (example: ADA pass with
+  walk-forward folds -11, -31, +28, +27, +91).
+- Dead conditions pass through: `tft_prediction` is constant 0 (TFT never
+  wired), and out-of-range thresholds create always-true conditions.
+- ADA produced 81 of 137 exam passes in 9 days (3-15 for most coins):
+  data is clean; the passes are regime fits that the weak DSR let through.
+
 ## 2026-10-05 — Beat-the-market paper bar, Nov 30 decision date, CEX paper tier
 
 User approved all three open proposals ("decide what you think is needed

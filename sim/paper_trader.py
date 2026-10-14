@@ -340,7 +340,8 @@ def process_bars(conn: sqlite3.Connection, verbose: bool = True) -> Dict[str, in
 
 
 def drift_benchmark(conn: sqlite3.Connection, eid: int, instrument: str,
-                    enrolled_ts: float) -> Optional[float]:
+                    enrolled_ts: float,
+                    end_ms: Optional[int] = None) -> Optional[float]:
     """Exposure-matched market benchmark for one book, same construction
     as the LAB benchmark gate: coin return over the book's life x the
     book's time in market x its average position size, minus the costs the
@@ -358,7 +359,10 @@ def drift_benchmark(conn: sqlite3.Connection, eid: int, instrument: str,
     except Exception:
         return None
     start_ms = enrolled_ts * 1000
-    window = [f for f in feats if f["ts"] >= start_ms]
+    # The book's own life only: a retired book's cursor stops advancing, and
+    # market moves after retirement must not change its benchmark.
+    window = [f for f in feats if f["ts"] >= start_ms
+              and (not end_ms or f["ts"] <= end_ms)]
     if len(window) < 2:
         return None
     first, last = window[0]["features"]["close"], window[-1]["features"]["close"]
@@ -378,8 +382,8 @@ def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
     from evolution.promotion_funnel import benchmark_gate_passed
     out = []
     now = time.time()
-    for (eid, gid, gjson, ets, status) in conn.execute(
-        "SELECT id, genome_id, genome_json, enrolled_ts, status "
+    for (eid, gid, gjson, ets, status, last_bar) in conn.execute(
+        "SELECT id, genome_id, genome_json, enrolled_ts, status, last_bar_ts "
         "FROM enrollments").fetchall():
         days = (now - ets) / 86400
         trades = conn.execute(
@@ -397,7 +401,7 @@ def grade_and_publish(conn: sqlite3.Connection) -> Dict[str, Any]:
         gdict = json.loads(gjson) or {}
         protected = has_protective_exit(gdict)
         inst = gdict.get("instrument") or "SOL/USDC"
-        bench = drift_benchmark(conn, eid, inst, ets)
+        bench = drift_benchmark(conn, eid, inst, ets, end_ms=last_bar or None)
         beat = (bench is not None and benchmark_gate_passed(net, bench))
         verdict = "RUNNING"
         if days >= PAPER_MIN_DAYS:

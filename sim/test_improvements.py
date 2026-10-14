@@ -1533,8 +1533,8 @@ def test_cex_tier_and_benchmark_bar():
         # +$25 minimum, so the market bar is what separates the cases)
         import layer1.historical_feature_engine_1h as hfe
         H = 3_600_000
-        t0_s = time.time() - 31 * 86400
-        t0_ms = int(t0_s * 1000)
+        t0_ms = int((time.time() - 31 * 86400) * 1000)
+        t0_s = t0_ms / 1000.0  # enrollment exactly on the first bar
         n_bars = 31 * 24
         feats = [{"ts": t0_ms + i * H,
                   "features": {"close": 100.0 * (1 + 0.50 * i / (n_bars - 1))}}
@@ -1572,6 +1572,15 @@ def test_cex_tier_and_benchmark_bar():
             check(f"benchmark = drift x time-in-market x size - costs "
                   f"(${bench:.2f} vs ${expect:.2f})",
                   bench is not None and abs(bench - expect) < 0.05)
+            mi = len(feats) // 4
+            mid_ms = feats[mi]["ts"]
+            b_cut = pt.drift_benchmark(conn, eid, "SOL/USDC", t0_s, end_ms=mid_ms)
+            cut_ret = feats[mi]["features"]["close"] / 100.0 - 1.0
+            cut_tim = min(20 * seg / (mid_ms - t0_ms), 1.0)
+            expect_cut = cut_ret * cut_tim * 200.0 - costs
+            check(f"retired book: benchmark uses only its own life "
+                  f"(${b_cut:.2f} vs ${expect_cut:.2f})",
+                  b_cut is not None and abs(b_cut - expect_cut) < 0.05)
 
             def grade_with_net(total):
                 conn.execute("UPDATE trades SET net_pnl=? WHERE enrollment_id=?",
