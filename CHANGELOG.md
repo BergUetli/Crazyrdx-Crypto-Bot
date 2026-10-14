@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented here.
 
+## 2026-10-15 — Exam integrity fixes (user-approved)
+
+- **Deflated-Sharpe gate corrected and made hard.** It now receives the
+  per-trade Sharpe (mean/std of trade returns) instead of the engine's
+  sqrt(n)-scaled ratio, which had made the haircut ~7x too weak. The
+  "strong recent OOS profit" bypass is removed: recent profit is exactly
+  what luck produces when millions of strategies are tried. Trials are
+  counted as distinct strategy families (5.1M) rather than raw genomes
+  (52M), the standard clustering correction; with either count the bar is
+  a per-trade t-statistic of roughly 5.5+.
+- **Out-of-sample gate**: a strategy must make money in-sample too. One
+  that lost in training and won only in the test window now fails.
+- **Inert conditions rejected** at feasibility (AND/OR/KOFN/TFT): any
+  condition true on <0.5% or >99.5% of defined bars. `tft_prediction` /
+  `tft_confidence` removed from sampling (model never wired; constant 0).
+  Note: the "TFT" logic type silently behaves as AND while TFT is unwired.
+- **Fast signal path was never used on real data**: stored feature rows
+  carry a text field (`pair`), `get_columns` raised on it and the
+  evaluator silently fell back to the legacy path. Non-numeric fields are
+  now skipped. Verified on production data: 70/70 identical trade lists
+  between fast and legacy paths across SOL, ADA, XRP, ETH.
+- Read-only dry run on the 12 champions: 0 survive (8 lost money
+  in-sample; all 12 fail the luck haircut; 4 carry inert conditions).
+  Expect the board to empty at the next runner start and exam passes to
+  become rare-to-never.
+
 ## 2026-10-14 — Fix: retired paper books' benchmark window
 
 The drift benchmark of a retired book kept extending to "now", so after

@@ -221,12 +221,72 @@ def benchmark_gate_passed(strategy_pnl: float, benchmark_pnl: float) -> bool:
     return strategy_pnl >= hurdle
 
 
+INERT_MIN_RATE = 0.005   # condition true on <0.5% of defined bars: dead
+INERT_MAX_RATE = 0.995   # true on >99.5%: always on, adds nothing
+
+
+def inert_conditions(genome: StrategyGenome,
+                     features: List[Dict[str, Any]]) -> List[str]:
+    """Conditions that never or always fire on this data. They make a
+    strategy look more specific (and a new family) than it is: e.g.
+    `tft_prediction > 0.87` (that column is constant 0) or a threshold far
+    outside the indicator's range. MEANREV/BREAKOUT/TREND use their
+    conditions as parameters, not as filters, so only AND/OR/KOFN/TFT are
+    checked (TFT falls back to AND while the model is unwired)."""
+    if genome.entry_logic not in ("AND", "OR", "KOFN", "TFT"):
+        return []
+    import numpy as np
+    from layer1.fast_signals import _cond_met, cond_series, get_columns
+    cols = get_columns(features)
+    n = len(features)
+    out = []
+    for c in genome.entry_conditions or []:
+        v, thr = cond_series(c, cols, n)
+        fin = np.isfinite(v)
+        n_def = int(fin.sum())
+        if n_def < 50:
+            out.append(f"{c.indicator}: only {n_def} defined bars")
+            continue
+        rate = float(_cond_met(c, cols, n)[fin].mean())
+        if rate < INERT_MIN_RATE or rate > INERT_MAX_RATE:
+            out.append(f"{c.indicator} {c.operator} {thr:.4g}: true on {rate:.1%}")
+    return out
+
+
+def per_trade_sharpe(result) -> float:
+    """mean/std of per-trade returns (net_pnl / size). NOT the engine's
+    sharpe_ratio, which is already scaled by sqrt(min(n, 50))."""
+    rets = [t.net_pnl / max(float(t.size_usd), 1e-9)
+            for t in (getattr(result, "trades", None) or [])]
+    if len(rets) < 2:
+        return 0.0
+    m = sum(rets) / len(rets)
+    var = sum((r - m) ** 2 for r in rets) / (len(rets) - 1)
+    return m / math.sqrt(var) if var > 1e-18 else 0.0
+
+
+def effective_trials(raw_trials: int) -> int:
+    """Independent trials for the multiple-testing haircut: distinct
+    strategy families evaluated, never more than the raw count."""
+    try:
+        from evolution.strategy_log import distinct_family_count
+        fam = distinct_family_count()
+    except Exception:
+        fam = None
+    if not fam:
+        return max(1, int(raw_trials))
+    return max(1, min(int(raw_trials), int(fam)))
+
+
 def approximate_dsr(sharpe: float, n_obs: int, n_trials: int) -> float:
     """
-    Lightweight DSR-like score in [0,1].
+    Lightweight deflated-Sharpe score in [0,1].
 
-    Uses the *clamped trade-return ratio* from BacktestEngine (already in [-5,5]),
-    not a fake annualized Sharpe. Haircuts for selection budget N.
+    `sharpe` must be the PER-TRADE Sharpe (mean/std of trade returns, see
+    per_trade_sharpe). Until 2026-10-15 the funnel passed the engine's
+    sharpe_ratio, already multiplied by sqrt(min(n, 50)); this function
+    multiplies by sqrt(n) again, so the haircut was ~7x too weak and almost
+    any candidate scored 1.0.
     """
     if n_obs < 5 or n_trials < 1:
         return 0.0
@@ -336,13 +396,16 @@ class PromotionFunnel:
             total_pnl=full.total_pnl,
             max_drawdown=float(full.max_drawdown or 0.0),
         )
+        inert = inert_conditions(genome, self.eval.features)
         feas_pass = (
             full.total_trades >= self.min_trades_full
             and (full.total_pnl > 0 if LAB_REQUIRE_POSITIVE_FULL_PNL else True)
             and float(full.max_drawdown or 0.0) <= LAB_MAX_DRAWDOWN
+            and not inert
         )
         gates["feasibility"] = {
             "passed": feas_pass,
+            "inert_conditions": inert,
             **full_d,
             "min_trades": self.min_trades_full,
             "max_drawdown_cap": LAB_MAX_DRAWDOWN,
@@ -369,11 +432,14 @@ class PromotionFunnel:
             oos_pass = False
             ratio = 0.0
         else:
-            # OOS pnl should be at least X% of |IS| when IS positive, or both positive
+            # The strategy must make money in-sample AND keep >= X% of it
+            # out of sample. A strategy that LOST in-sample and won OOS is a
+            # regime coincidence, not a validated edge (until 2026-10-15 it
+            # passed with ratio 1.0).
             if is_res.total_pnl > 0:
                 ratio = oos_res.total_pnl / max(is_res.total_pnl, 1e-9)
             else:
-                ratio = 1.0 if oos_res.total_pnl > 0 else 0.0
+                ratio = 0.0
             oos_pass = (
                 oos_res.total_pnl > 0
                 and oos_res.total_trades >= self.min_trades_oos
@@ -513,34 +579,26 @@ class PromotionFunnel:
         if not mev_pass:
             return self._fail(name, genome, gates, "mev")
 
-        # Gate 7: DSR-style haircut using trial budget
-        # Soft gate: with millions of trials, hard DSR fails everything.
-        # We record DSR and require either decent DSR OR strong OOS PnL + WF.
+        # Gate 7: deflated-Sharpe haircut for the search's selection budget.
+        # Hard gate since 2026-10-15 (user decision): no "strong OOS"
+        # bypass, because recent profit is exactly what luck produces when
+        # millions of strategies are tried. Per-trade Sharpe vs the expected
+        # best of N_eff independent tries (distinct families).
         n_trials = n_trials_context if n_trials_context is not None else get_total_trials()
+        n_eff = effective_trials(max(n_trials, 1))
         n_obs = max(full.total_trades, 1)
-        dsr = approximate_dsr(full.sharpe_ratio or 0.0, n_obs=n_obs, n_trials=max(n_trials, 1))
-        oos_pnl = float(gates.get("oos", {}).get("oos", {}).get("total_pnl", 0.0) or 0.0)
-        wf_rate = float(gates.get("walk_forward", {}).get("pass_rate", 0.0) or 0.0)
-        # Pass if DSR ok, or cold-start, or strong money+WF evidence
-        dsr_pass = (
-            dsr >= LAB_DSR_MIN
-            or n_trials < LAB_DSR_COLD_START_TRIALS
-            or (
-                oos_pnl >= LAB_DSR_ALT_OOS_PNL
-                and wf_rate >= LAB_DSR_ALT_WF_RATE
-                and full.total_pnl > 0
-            )
-        )
+        sr_trade = per_trade_sharpe(full)
+        dsr = approximate_dsr(sr_trade, n_obs=n_obs, n_trials=n_eff)
+        dsr_pass = dsr >= LAB_DSR_MIN or n_eff < LAB_DSR_COLD_START_TRIALS
         gates["dsr"] = {
             "passed": dsr_pass,
             "dsr": dsr,
+            "sharpe_per_trade": sr_trade,
             "sharpe": full.sharpe_ratio,
             "n_obs_trades": n_obs,
             "n_trials": n_trials,
+            "n_trials_effective": n_eff,
             "min_dsr": LAB_DSR_MIN,
-            "alt_pass_strong_oos": bool(
-                oos_pnl >= LAB_DSR_ALT_OOS_PNL and wf_rate >= LAB_DSR_ALT_WF_RATE
-            ),
         }
         if not dsr_pass:
             return self._fail(name, genome, gates, "dsr")

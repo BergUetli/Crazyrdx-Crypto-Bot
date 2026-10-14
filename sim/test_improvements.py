@@ -418,6 +418,86 @@ def test_protection_gate(features):
           f"got {out.get('verdict')}/{out.get('failed_at')}")
 
 
+def test_exam_integrity(features):
+    print("\n[8c] exam integrity: corrected DSR, no bypass, IS profit, inert conditions")
+    import math as _m
+    from types import SimpleNamespace as NS
+    import evolution.promotion_funnel as pf
+    from evolution.genome import EntryCondition, ExitRule, StrategyGenome, INDICATORS
+
+    check("never-wired TFT columns no longer sampled",
+          "tft_prediction" not in INDICATORS and "tft_confidence" not in INDICATORS)
+
+    # Per-trade Sharpe is mean/std of trade returns, no sqrt(n) scaling
+    trades = [NS(net_pnl=x, size_usd=100.0) for x in (2.0, -1.0, 3.0, -1.0, 2.0)]
+    rets = [0.02, -0.01, 0.03, -0.01, 0.02]
+    m = sum(rets) / 5
+    sd = _m.sqrt(sum((r - m) ** 2 for r in rets) / 4)
+    check("per_trade_sharpe = mean/std of trade returns",
+          abs(pf.per_trade_sharpe(NS(trades=trades)) - m / sd) < 1e-12)
+    # The ADA case from the 2026-10-14 audit: per-trade SR 0.175, 108
+    # trades. Old input (engine sharpe 1.24) scored ~1.0; correct input fails.
+    check("audit case: corrected DSR fails where the old input passed",
+          pf.approximate_dsr(1.24, 108, 1000) > 0.99
+          and pf.approximate_dsr(0.175, 108, 1000) < 0.5)
+    check("a genuinely strong record still passes (SR 0.6, 100 trades, N=1000)",
+          pf.approximate_dsr(0.6, 100, 1000) >= 0.5)
+
+    def g_with(conds, logic="OR"):
+        return StrategyGenome(
+            entry_conditions=conds, entry_logic=logic,
+            exit_rules=[ExitRule("stop_loss", 0.02), ExitRule("time_stop", 12)],
+            sizing_method="fixed", sizing_base=0.3, sizing_max=0.5,
+            genome_id="integrity")
+    vals = sorted(f["features"]["price_roc_1h"] for f in features)
+    med = vals[len(vals) // 2]
+    live = EntryCondition("price_roc_1h", ">", med)
+    always = EntryCondition("price_roc_1h", ">", vals[0] - 1.0)
+    never = EntryCondition("price_roc_1h", ">", vals[-1] + 1.0)
+    check("inert check: a live condition is fine",
+          pf.inert_conditions(g_with([live]), features) == [])
+    check("inert check: always-true and never-true conditions flagged",
+          len(pf.inert_conditions(g_with([live, always, never]), features)) == 2)
+    check("inert check skips MEANREV (conditions are parameters there)",
+          pf.inert_conditions(g_with([always], "MEANREV"), features) == [])
+
+    # Funnel wiring with stubbed backtests: IS loss + OOS win must fail OOS;
+    # an inert condition must fail feasibility.
+    funnel = pf.PromotionFunnel(features[:900])
+    calls = {"n": 0}
+
+    def fake_raw(genome, feats=None, fee_rate=None, latency=None):
+        calls["n"] += 1
+        tr = [NS(net_pnl=1.0, size_usd=100.0, direction="long",
+                 entry_ts=0, exit_ts=1, fee_cost=0.0)] * 60
+        if calls["n"] == 1:   # full sample: fine
+            return NS(total_trades=60, total_pnl=60.0, max_drawdown=0.05,
+                      win_rate=0.6, sharpe_ratio=1.0, profit_factor=2.0,
+                      final_capital=560.0, trades=tr)
+        if calls["n"] == 2:   # in-sample: LOST money
+            return NS(total_trades=40, total_pnl=-10.0, max_drawdown=0.05,
+                      win_rate=0.4, sharpe_ratio=-0.2, profit_factor=0.8,
+                      final_capital=490.0, trades=tr)
+        return NS(total_trades=20, total_pnl=70.0, max_drawdown=0.03,
+                  win_rate=0.7, sharpe_ratio=1.5, profit_factor=3.0,
+                  final_capital=570.0, trades=tr)
+    old_raw = funnel._raw
+    old_kill = pf.PromotionFunnel._fail
+    try:
+        funnel._raw = fake_raw
+        out = funnel.run(g_with([live]), n_trials_context=5000, verbose=False)
+        check("lost in-sample + won out-of-sample -> rejected at oos",
+              out.get("failed_at") == "oos", f"got {out.get('failed_at')}")
+        calls["n"] = 0
+        out2 = funnel.run(g_with([live, always]), n_trials_context=5000,
+                          verbose=False)
+        check("inert condition -> rejected at feasibility, reason recorded",
+              out2.get("failed_at") == "feasibility"
+              and out2["gates"]["feasibility"]["inert_conditions"])
+    finally:
+        funnel._raw = old_raw
+
+
 def test_vintage_ledger(features, tmp: Path):
     print("\n[9] vintage forward ledger")
     import evolution.vintage_ledger as vl
@@ -1900,6 +1980,7 @@ def main():
         test_e2e(features, n_workers=1)
         test_funnel(features, best)
         test_protection_gate(features)
+        test_exam_integrity(features)
         test_vintage_ledger(features, Path(td))
 
     print(f"\n{'='*50}\nRESULT: {PASS} passed, {FAIL} failed")

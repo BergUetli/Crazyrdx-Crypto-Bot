@@ -42,10 +42,16 @@ def get_columns(features: List[Dict[str, Any]]) -> Dict[str, np.ndarray]:
     keys |= set(features[-1]["features"])
     cols: Dict[str, np.ndarray] = {}
     for k in keys:
-        cols[k] = np.array(
-            [float(f["features"].get(k) or 0.0) for f in features],
-            dtype=np.float64,
-        )
+        # Stored rows carry non-numeric metadata (e.g. "pair": "SOL/USDC").
+        # Until 2026-10-15 that raised here on every real feature list and
+        # the evaluator silently fell back to the slow legacy path.
+        try:
+            cols[k] = np.array(
+                [float(f["features"].get(k) or 0.0) for f in features],
+                dtype=np.float64,
+            )
+        except (TypeError, ValueError):
+            continue
     _COLS_CACHE[key] = cols
     if len(_COLS_CACHE) > _COLS_CACHE_MAX:
         _COLS_CACHE.popitem(last=False)

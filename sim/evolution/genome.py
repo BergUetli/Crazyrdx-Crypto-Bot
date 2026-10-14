@@ -36,8 +36,8 @@ INDICATORS = [
     "momentum_divergence_1h_4h", "momentum_divergence_4h_1d", "momentum_divergence_1h_1d",
     "volatility_regime_1h_4h", "volatility_regime_4h_1d", "volatility_regime_1h_1d",
     "volume_confirmation_1h_4h",
-    # Model heads (may be zero until TFT inference is wired)
-    "tft_prediction", "tft_confidence",
+    # (tft_prediction / tft_confidence retired 2026-10-15: the TFT model was
+    # never wired, both columns are constant 0, conditions on them are dead)
     # External market features (funding, basis, order flow)
     "funding_rate", "funding_rate_8h_avg", "funding_rate_roc", "funding_rate_extreme",
     "cex_dex_basis_bps", "cex_dex_basis_roc_4h", "cex_dex_basis_roc_1d", "cex_dex_basis_extreme",

@@ -105,6 +105,8 @@ LAB_PERTURB_RETENTION = 0.40
 LAB_MEV_BREAK_EVEN_MIN = 0.20  # must still work until MEV p > 20%
 LAB_DSR_MIN = 0.50
 LAB_DSR_COLD_START_TRIALS = 200
+# Retired 2026-10-15: the "strong OOS" bypass around the DSR gate. Kept only
+# so old imports resolve; the funnel no longer reads them.
 LAB_DSR_ALT_OOS_PNL = 0.05 * BOOK_USD  # 5% of book
 LAB_DSR_ALT_WF_RATE = 0.80
 

@@ -124,6 +124,24 @@ def log_genome(genome, result: Dict[str, Any], cycle: int, generation: int,
     }
 
 
+def distinct_family_count() -> Optional[int]:
+    """Number of distinct strategy families ever evaluated (within log
+    retention). Used as the effective number of independent trials for the
+    deflated-Sharpe gate: genomes inside one family (same logic, indicator
+    set and instrument) are highly correlated variants, so counting each of
+    them as an independent trial would overstate the multiple-testing
+    penalty, while counting only families is the standard clustering fix."""
+    try:
+        conn = _conn()
+        try:
+            return int(conn.execute(
+                "SELECT COUNT(DISTINCT family) FROM strategies").fetchone()[0])
+        finally:
+            conn.close()
+    except Exception:
+        return None
+
+
 def family_counts(days: float = 3.0) -> Dict[str, int]:
     """How often each family was evaluated recently (exploration-tax input)."""
     try:
