@@ -13,3 +13,4 @@ sim/evolution/*.json
 !sim/evolution/champions.json
 !sim/evolution/killed_dna.json
 !sim/evolution/trial_count.json
+sim/research/xex_scan_results.jsonl
